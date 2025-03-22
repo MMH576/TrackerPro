@@ -23,7 +23,8 @@ const MOCK_HABITS: Habit[] = [
     icon: '🧘',
     logs: [
       { date: new Date().toISOString().split('T')[0], value: 10 }
-    ]
+    ],
+    days: ['0', '1', '2', '3', '4', '5', '6']
   },
   {
     id: '2',
@@ -42,7 +43,8 @@ const MOCK_HABITS: Habit[] = [
     icon: '📚',
     logs: [
       { date: new Date().toISOString().split('T')[0], value: 30 }
-    ]
+    ],
+    days: ['0', '1', '2', '3', '4', '5', '6']
   },
   {
     id: '3',
@@ -57,7 +59,8 @@ const MOCK_HABITS: Habit[] = [
     progress: 10,
     isFavorite: true,
     icon: '💧',
-    logs: []
+    logs: [],
+    days: ['0', '1', '2', '3', '4', '5', '6']
   },
   {
     id: '4',
@@ -72,7 +75,40 @@ const MOCK_HABITS: Habit[] = [
     progress: 23,
     isFavorite: false,
     icon: '🏃',
-    logs: []
+    logs: [],
+    days: ['0', '1', '2', '3', '4', '5', '6']
+  },
+  {
+    id: '5',
+    name: 'Budget Review',
+    description: 'Review monthly expenses',
+    category: 'finance',
+    frequency: 'weekly',
+    type: 'yes-no',
+    goal: 1,
+    streak: 4,
+    completedDates: [],
+    progress: 15,
+    isFavorite: false,
+    icon: '💰',
+    logs: [],
+    days: ['1']
+  },
+  {
+    id: '6',
+    name: 'Draw or Paint',
+    description: 'Practice artistic skills',
+    category: 'creativity',
+    frequency: 'weekly',
+    type: 'timer',
+    goal: 45,
+    streak: 2,
+    completedDates: [],
+    progress: 8,
+    isFavorite: true,
+    icon: '🎨',
+    logs: [],
+    days: ['6', '0']
   }
 ];
 
@@ -162,7 +198,7 @@ export function useHabits() {
           id: habit.id,
           name: habit.name,
           description: habit.description || '',
-          category: 'health', // Default, can be adjusted based on your schema
+          category: habit.color || 'health', // Use color field as category until a category field is added
           frequency: habit.frequency?.type || 'daily',
           type: habitType,
           goal: habit.target_count || 1,
@@ -278,7 +314,12 @@ export function useHabits() {
       // Format frequency data based on the Supabase schema
       const frequencyData = {
         type: habitData.frequency,
-        days: habitData.days || (habitData.frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5]) // Default to all days or weekdays
+        days: habitData.days || (
+          habitData.frequency === 'daily' ? [0, 1, 2, 3, 4, 5, 6] :
+          habitData.frequency === 'weekdays' ? [1, 2, 3, 4, 5] :
+          habitData.frequency === 'weekends' ? [0, 6] :
+          [1] // Default to Monday for weekly habits if no days specified
+        )
       };
       
       // Insert habit into Supabase
@@ -307,8 +348,13 @@ export function useHabits() {
       const daysArray = habitData.days 
         ? habitData.days.map((day: string | number) => day.toString()) 
         : (habitData.frequency === 'daily' 
-          ? ['0', '1', '2', '3', '4', '5', '6'] 
-          : ['1', '2', '3', '4', '5']);
+            ? ['0', '1', '2', '3', '4', '5', '6'] 
+            : habitData.frequency === 'weekdays'
+              ? ['1', '2', '3', '4', '5']
+              : habitData.frequency === 'weekends'
+                ? ['0', '6']
+                : ['1'] // Default to Monday for weekly
+          );
       
       // Create a new habit object
       const newHabit: Habit = {

@@ -4,7 +4,6 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type React from "react"
-import { CustomHeader } from "@/components/custom-header"
 
 export default function DashboardLayout({
   children,
@@ -39,7 +38,6 @@ export default function DashboardLayout({
 
   return (
     <div className="relative min-h-screen bg-background">
-      <CustomHeader />
       <div className="container mx-auto max-w-6xl">
         <main className="p-4">
           {children}

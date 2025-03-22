@@ -165,7 +165,7 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
       
       // Call onAddHabit with the returned data
       const newHabit = {
-        id: data[0].id,
+        id: data[0]?.id || Math.random().toString(36).substring(2, 9),
         name: values.name,
         description: values.description,
         category: values.category,
@@ -662,10 +662,16 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
           {activeTab === "basic" ? "Cancel" : "Back"}
         </Button>
         
-        <Button onClick={handleNext}>
-          {activeTab === "appearance" ? "Create Habit" : "Next"}
-          {activeTab !== "appearance" && <ArrowLeft className="ml-2 h-4 w-4 rotate-180" />}
-        </Button>
+        {activeTab === "appearance" ? (
+          <Button onClick={form.handleSubmit(onSubmit)} type="submit">
+            Create Habit
+          </Button>
+        ) : (
+          <Button onClick={handleNext}>
+            Next
+            <ArrowLeft className="ml-2 h-4 w-4 rotate-180" />
+          </Button>
+        )}
       </div>
     </div>
   )

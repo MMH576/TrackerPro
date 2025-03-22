@@ -64,14 +64,22 @@ export function HabitDashboard() {
       habit.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (habit.description && habit.description.toLowerCase().includes(searchQuery.toLowerCase()))
     
-    // Category filter
-    const matchesCategory = filterCategory === "all" || habit.category === filterCategory
+    // Log the filtering for debugging
+    console.log(`Today View: Filtering habit "${habit.name}", Category: ${habit.category}, Selected filter: ${filterCategory}`)
     
-    // Favorite filter
-    const matchesFavorite = filterCategory !== "favorites" || habit.isFavorite
-    
-    return matchesSearch && matchesCategory && matchesFavorite
+    // Return habits that match both search and category conditions
+    return matchesSearch && (
+      filterCategory === "all" || 
+      (filterCategory === "favorites" && habit.isFavorite) || 
+      habit.category === filterCategory
+    )
   })
+  
+  // Get habits that are due today based on their frequency
+  const getDueHabitsToday = () => {
+    const today = new Date()
+    return habits.filter(habit => isHabitDueOnDate(habit, today))
+  }
   
   // Calculate completion statistics
   const completedToday = habits.filter(habit => {
@@ -109,6 +117,9 @@ export function HabitDashboard() {
     // Convert Sunday from 0 to 7 for consistency with our data model
     const adjustedDayOfWeek = dayOfWeek === 0 ? "0" : dayOfWeek.toString()
     
+    console.log(`Checking habit "${habit.name}" for date ${date.toDateString()}, day: ${adjustedDayOfWeek}`)
+    console.log(`Frequency: ${habit.frequency}, Days: ${habit.days ? JSON.stringify(habit.days) : 'none'}`)
+    
     // All daily habits are due every day
     if (habit.frequency === "daily") return true
     
@@ -120,7 +131,9 @@ export function HabitDashboard() {
     
     // Weekly habits are due on specific days
     if (habit.frequency === "weekly" && habit.days && Array.isArray(habit.days)) {
-      return habit.days.includes(adjustedDayOfWeek)
+      const isDue = habit.days.includes(adjustedDayOfWeek)
+      console.log(`Weekly habit check: ${isDue ? 'Due' : 'Not due'} on day ${adjustedDayOfWeek}`)
+      return isDue
     }
     
     return false
@@ -228,18 +241,20 @@ export function HabitDashboard() {
             <div className="flex-1">
               {filteredHabits.length === 0 ? (
                 <Card className="flex flex-col items-center justify-center p-8 text-center">
-                  <div className="rounded-full bg-primary/10 p-3 mb-3">
+                  <div className="rounded-full bg-primary/10 p-3 mb-4">
                     <CalendarDays className="h-6 w-6 text-primary" />
                   </div>
-                  <h3 className="text-xl font-medium mb-1">No habits found</h3>
-                  <p className="text-muted-foreground mb-4">
-                    {searchQuery || filterCategory !== "all" 
-                      ? "Try adjusting your search or filters" 
-                      : "You haven't created any habits yet"}
+                  <h3 className="text-xl font-medium mb-2">No habits found</h3>
+                  <p className="text-muted-foreground mb-6 max-w-md">
+                    {searchQuery 
+                      ? `No habits match your search "${searchQuery}". Try a different search term.` 
+                      : filterCategory !== "all" 
+                        ? `No habits found in the "${filterCategory}" category. Try creating a habit in this category.`
+                        : "You haven't created any habits yet. Get started by adding your first habit!"}
                   </p>
                   <Button onClick={() => router.push("/dashboard/add-habit")}>
                     <Plus className="h-4 w-4 mr-2" />
-                    Add Your First Habit
+                    {filterCategory !== "all" ? "Add Habit in This Category" : "Add Your First Habit"}
                   </Button>
                 </Card>
               ) : (
@@ -297,16 +312,19 @@ export function HabitDashboard() {
         </TabsContent>
         
         <TabsContent value="week" className="space-y-4">
-          <div className="flex gap-4 mb-6 overflow-x-auto pb-2">
+          <div className="flex gap-3 mb-6 overflow-x-auto pb-2">
             {weekDays.map((day, index) => (
               <Button
                 key={index}
                 variant={day.toDateString() === selectedDate.toDateString() ? "default" : "outline"}
-                className="flex flex-col px-4 min-w-[85px]"
+                className="flex flex-col px-4 py-3 min-w-[85px]"
                 onClick={() => setSelectedDate(day)}
               >
                 <span className="text-sm font-normal">{format(day, "EEE")}</span>
                 <span className="text-xl font-bold">{format(day, "d")}</span>
+                <span className="text-xs mt-1 text-muted-foreground">
+                  {format(day, "MMM")}
+                </span>
               </Button>
             ))}
           </div>
@@ -328,9 +346,9 @@ export function HabitDashboard() {
                   {habits
                     .filter(habit => isHabitDueOnDate(habit, selectedDate))
                     .map(habit => (
-                      <div key={habit.id} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div key={habit.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-secondary/20 transition-colors">
                         <div className="flex items-center gap-3">
-                          <span className="text-xl">{habit.icon || "✨"}</span>
+                          <span className="text-xl flex-shrink-0">{habit.icon || "✨"}</span>
                           <div>
                             <h3 className="font-medium">{habit.name}</h3>
                             {habit.description && (
@@ -358,8 +376,22 @@ export function HabitDashboard() {
                     ))}
                   
                   {habits.filter(habit => isHabitDueOnDate(habit, selectedDate)).length === 0 && (
-                    <div className="text-center py-8">
-                      <p className="text-muted-foreground">No habits scheduled for this day</p>
+                    <div className="text-center py-12">
+                      <div className="mx-auto rounded-full bg-primary/10 p-3 w-14 h-14 flex items-center justify-center mb-4">
+                        <CalendarDays className="h-8 w-8 text-primary" />
+                      </div>
+                      <h3 className="text-lg font-medium mb-2">No habits scheduled</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        You don't have any habits scheduled for {format(selectedDate, "EEEE")}.
+                        {selectedDate.toDateString() === new Date().toDateString() && 
+                          " Why not add a new habit that repeats on this day?"}
+                      </p>
+                      {selectedDate.toDateString() === new Date().toDateString() && (
+                        <Button onClick={() => router.push("/dashboard/add-habit")}>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add New Habit
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

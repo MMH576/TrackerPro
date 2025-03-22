@@ -76,7 +76,7 @@ export function Header() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-14 items-center max-w-6xl">
         <div className="mr-4 flex">
-          <Link href="/" className="flex items-center space-x-2">
+          <Link href="/dashboard" className="flex items-center space-x-2">
             <div className="bg-primary h-8 w-8 rounded-lg flex items-center justify-center">
               <span className="text-primary-foreground text-lg font-bold">H</span>
             </div>

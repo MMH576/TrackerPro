@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 
 export function CustomHeader() {
   const { user, signOut } = useAuth();
@@ -39,20 +40,25 @@ export function CustomHeader() {
   };
 
   return (
-    <header className="border-b bg-background dark:bg-background sticky top-0 z-50">
-      <div className="container mx-auto py-3 flex justify-between items-center">
+    <motion.header 
+      className="border-b bg-background sticky top-0 z-50"
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="container mx-auto flex justify-between items-center h-16">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="bg-primary h-8 w-8 rounded flex items-center justify-center">
-            <span className="text-primary-foreground font-bold">H</span>
+          <div className="bg-primary h-9 w-9 rounded-lg flex items-center justify-center">
+            <span className="text-primary-foreground font-bold text-xl">H</span>
           </div>
-          <span className="font-bold text-xl hidden sm:inline-block">Habit Tracker Pro</span>
+          <span className="font-bold text-xl">Habit Tracker Pro</span>
         </Link>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <Button
             variant="ghost"
             size="icon"
-            className="relative"
+            className="relative rounded-full h-9 w-9"
             onClick={handleNotificationClick}
           >
             <Bell className="h-5 w-5" />
@@ -62,8 +68,8 @@ export function CustomHeader() {
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                <Avatar className="h-8 w-8">
+              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                <Avatar className="h-9 w-9">
                   <AvatarImage 
                     src={user?.user_metadata?.avatar_url || ""} 
                     alt={user?.user_metadata?.full_name || "User"} 
@@ -94,6 +100,6 @@ export function CustomHeader() {
           </DropdownMenu>
         </div>
       </div>
-    </header>
+    </motion.header>
   );
 } 

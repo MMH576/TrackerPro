@@ -8,7 +8,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // DEV MODE: Set to false to ensure authentication is required
-const ENABLE_DEV_MODE = false;
+const ENABLE_DEV_MODE = true;
 
 // Create client with persistent sessions
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
