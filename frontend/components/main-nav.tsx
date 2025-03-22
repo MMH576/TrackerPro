@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { useUser } from "@/hooks/use-user"
+import { useAuth } from "@/lib/auth-context"
+import { BarChart, Home, Settings, User, Plus } from "lucide-react"
 
 interface MainNavProps {
   className?: string
@@ -11,49 +12,67 @@ interface MainNavProps {
 
 export function MainNav({ className }: MainNavProps) {
   const pathname = usePathname()
-  const { user } = useUser()
+  const { user } = useAuth()
 
   const navItems = [
     {
       name: "Dashboard",
-      href: "/",
-      active: pathname === "/",
+      href: "/dashboard",
+      icon: Home,
+    },
+    {
+      name: "Add Habit",
+      href: "/dashboard/add-habit",
+      icon: Plus,
     },
     {
       name: "Progress",
-      href: "/progress",
-      active: pathname === "/progress",
-    },
-    {
-      name: "Social",
-      href: "/social",
-      active: pathname === "/social",
+      href: "/dashboard/progress",
+      icon: BarChart,
     },
     {
       name: "Profile",
-      href: "/profile",
-      active: pathname === "/profile",
+      href: "/dashboard/profile",
+      icon: User,
+    },
+    {
+      name: "Settings",
+      href: "/dashboard/settings",
+      icon: Settings,
     },
   ]
 
-  if (!user) {
+  const isActive = (path: string) => {
+    if (path === "/dashboard" && pathname === "/dashboard") {
+      return true
+    }
+    return pathname.startsWith(path) && path !== "/dashboard";
+  }
+
+  // If no user or on auth pages, don't render anything
+  if (!user || pathname?.startsWith('/auth')) {
     return null
   }
 
   return (
-    <nav className={cn("flex items-center space-x-4 lg:space-x-6", className)}>
-      {navItems.map((item) => (
-        <Link
-          key={item.name}
-          href={item.href}
-          className={cn(
-            "text-sm font-medium transition-colors hover:text-primary",
-            item.active ? "text-primary" : "text-muted-foreground",
-          )}
-        >
-          {item.name}
-        </Link>
-      ))}
+    <nav className={cn("py-6 pr-6 w-56", className)}>
+      <div className="space-y-1">
+        {navItems.map((item) => (
+          <Link
+            key={item.name}
+            href={item.href}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-colors",
+              isActive(item.href) 
+                ? "bg-primary/10 text-primary" 
+                : "text-muted-foreground hover:text-foreground hover:bg-muted",
+            )}
+          >
+            <item.icon className="h-4 w-4" />
+            {item.name}
+          </Link>
+        ))}
+      </div>
     </nav>
   )
 }

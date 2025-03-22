@@ -1,52 +1,73 @@
 "use client"
 
-import { BarChart, Home, Settings, Users } from "lucide-react"
+import { BarChart, Home, Settings, User } from "lucide-react"
 import { cn } from "@/lib/utils"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
 
 interface MobileNavProps {
-  activeTab: string
-  setActiveTab: (tab: string) => void
+  className?: string
 }
 
-export function MobileNav({ activeTab, setActiveTab }: MobileNavProps) {
+export function MobileNav({ className }: MobileNavProps) {
+  const pathname = usePathname()
+  
+  // Don't show nav on auth pages
+  if (pathname?.startsWith('/auth')) {
+    return null
+  }
+  
   const items = [
     {
-      id: "habits",
+      id: "dashboard",
       label: "Habits",
       icon: Home,
+      href: "/dashboard"
     },
     {
       id: "progress",
       label: "Progress",
       icon: BarChart,
+      href: "/dashboard/progress"
     },
     {
-      id: "social",
-      label: "Social",
-      icon: Users,
+      id: "profile",
+      label: "Profile",
+      icon: User,
+      href: "/dashboard/profile"
     },
     {
       id: "settings",
       label: "Settings",
       icon: Settings,
+      href: "/dashboard/settings"
     },
   ]
 
+  const getIsActive = (href: string) => {
+    if (href === "/dashboard" && pathname === "/dashboard") {
+      return true
+    }
+    return pathname.startsWith(href) && href !== "/dashboard"
+  }
+
   return (
-    <div className="flex justify-around items-center h-16">
-      {items.map((item) => (
-        <button
-          key={item.id}
-          className={cn(
-            "flex flex-col items-center justify-center w-full h-full transition-colors",
-            activeTab === item.id ? "text-primary" : "text-muted-foreground hover:text-foreground",
-          )}
-          onClick={() => setActiveTab(item.id)}
-        >
-          <item.icon className="h-5 w-5" />
-          <span className="text-xs mt-1">{item.label}</span>
-        </button>
-      ))}
+    <div className={cn("fixed bottom-0 left-0 right-0 border-t bg-background z-40", className)}>
+      <div className="flex justify-around items-center h-16">
+        {items.map((item) => (
+          <Link
+            key={item.id}
+            href={item.href}
+            className={cn(
+              "flex flex-col items-center justify-center w-full h-full transition-colors",
+              getIsActive(item.href) ? "text-primary" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <item.icon className="h-5 w-5" />
+            <span className="text-xs mt-1">{item.label}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   )
 }

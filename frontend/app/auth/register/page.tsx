@@ -1,92 +1,81 @@
 'use client';
 
-import Link from "next/link"
-import { useState, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { signIn, signInWithGoogle } from "@/lib/supabase"
-import { useForm } from "react-hook-form"
-import { z } from "zod"
-import { zodResolver } from "@hookform/resolvers/zod"
+import Link from "next/link";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { signUp, signInWithGoogle } from "@/lib/supabase";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
 
-const loginSchema = z.object({
+const registerSchema = z.object({
+  name: z.string().min(1, { message: "Name is required" }),
   email: z.string().email({ message: "Please enter a valid email address" }),
-  password: z.string().min(1, { message: "Password is required" })
-})
+  password: z.string().min(6, { message: "Password must be at least 6 characters" })
+});
 
-type LoginFormValues = z.infer<typeof loginSchema>
+type RegisterFormValues = z.infer<typeof registerSchema>;
 
-export default function LoginPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+export default function RegisterPage() {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginFormValues>({
-    resolver: zodResolver(loginSchema),
+  const { register, handleSubmit, formState: { errors } } = useForm<RegisterFormValues>({
+    resolver: zodResolver(registerSchema),
     defaultValues: {
+      name: "",
       email: "",
       password: ""
     }
-  })
+  });
 
-  useEffect(() => {
-    // Check for error or success messages from URL params
-    const errorMessage = searchParams.get('error')
-    const successMessage = searchParams.get('message')
-    
-    if (errorMessage) setError(decodeURIComponent(errorMessage))
-    if (successMessage) setMessage(decodeURIComponent(successMessage))
-  }, [searchParams])
-
-  const onSubmit = async (data: LoginFormValues) => {
-    setIsLoading(true)
-    setError(null)
+  const onSubmit = async (data: RegisterFormValues) => {
+    setIsLoading(true);
+    setError(null);
     
     try {
-      console.log("Attempting login with:", data.email)
-      const { data: userData, error } = await signIn(data.email, data.password)
+      const { data: userData, error } = await signUp(data.email, data.password, data.name);
       
-      if (error) {
-        console.error("Login error from Supabase:", error)
-        throw error
-      }
+      if (error) throw error;
       
-      if (userData?.user) {
-        console.log("Login successful, user found:", userData.user.email)
-        console.log("Redirecting to dashboard...")
-        router.push('/dashboard')
+      if (userData) {
+        setMessage("Registration successful! Please check your email to confirm your account.");
+        // Wait a moment to show the success message before redirecting
+        setTimeout(() => {
+          router.push('/auth/login?message=Please+check+your+email+to+confirm+your+account');
+        }, 2000);
       } else {
-        console.error("Login returned without error but no user data")
-        throw new Error("Login failed. No user data returned.")
+        throw new Error("Registration failed. Please try again.");
       }
     } catch (err: any) {
-      console.error("Login error:", err)
-      setError(err.message || "Failed to sign in. Please check your credentials.")
-      setIsLoading(false)
+      console.error("Registration error:", err);
+      setError(err.message || "Failed to register. Please try again.");
+      setIsLoading(false);
     }
-  }
-
+  };
+  
   const handleGoogleSignIn = async () => {
-    setIsLoading(true)
-    setError(null)
+    setIsLoading(true);
+    setError(null);
     
     try {
-      const { error } = await signInWithGoogle()
-      if (error) throw error
+      const { error } = await signInWithGoogle();
+      if (error) throw error;
       // The redirect is handled by the OAuth flow
     } catch (err: any) {
-      console.error("Google sign-in error:", err)
-      setError(err.message || "Failed to sign in with Google. Please try again.")
-      setIsLoading(false)
+      console.error("Google sign-in error:", err);
+      setError(err.message || "Failed to sign in with Google. Please try again.");
+      setIsLoading(false);
     }
-  }
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -98,7 +87,7 @@ export default function LoginPage() {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">HabitHero</CardTitle>
-          <CardDescription>Enter your credentials to access your account</CardDescription>
+          <CardDescription>Create a new account to get started</CardDescription>
         </CardHeader>
         <CardContent>
           {error && (
@@ -111,19 +100,32 @@ export default function LoginPage() {
               <AlertDescription>{message}</AlertDescription>
             </Alert>
           )}
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs defaultValue="register" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Login</TabsTrigger>
               <TabsTrigger 
-                value="login" 
-                onClick={() => router.push('/auth/register')}
+                value="register" 
+                onClick={() => router.push('/auth/login')}
                 className="cursor-pointer"
               >
-                Register
+                Login
               </TabsTrigger>
+              <TabsTrigger value="register">Register</TabsTrigger>
             </TabsList>
-            <TabsContent value="login">
+            <TabsContent value="register">
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input 
+                    id="name" 
+                    type="text" 
+                    placeholder="John Doe" 
+                    {...register("name")}
+                    disabled={isLoading}
+                  />
+                  {errors.name && (
+                    <p className="text-sm text-destructive">{errors.name.message}</p>
+                  )}
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input 
@@ -138,12 +140,7 @@ export default function LoginPage() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Password</Label>
-                    <Link href="#" className="text-sm text-primary underline-offset-4 hover:underline">
-                      Forgot password?
-                    </Link>
-                  </div>
+                  <Label htmlFor="password">Password</Label>
                   <Input 
                     id="password" 
                     type="password" 
@@ -155,7 +152,7 @@ export default function LoginPage() {
                   )}
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Signing In..." : "Sign In"}
+                  {isLoading ? "Creating Account..." : "Create Account"}
                 </Button>
               </form>
             </TabsContent>
@@ -183,6 +180,5 @@ export default function LoginPage() {
         </CardFooter>
       </Card>
     </div>
-  )
-}
-
+  );
+} 
