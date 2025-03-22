@@ -60,8 +60,15 @@ export default function LoginPage() {
       
       if (userData?.user) {
         console.log("Login successful, user found:", userData.user.email)
+        console.log("Session data:", userData.session)
         console.log("Redirecting to dashboard...")
-        router.push('/dashboard')
+        
+        // Add a small delay before redirecting to ensure session is properly saved
+        setTimeout(() => {
+          console.log("Executing redirect now...")
+          // Force navigation to dashboard after successful login
+          window.location.href = '/dashboard'
+        }, 500)
       } else {
         console.error("Login returned without error but no user data")
         throw new Error("Login failed. No user data returned.")

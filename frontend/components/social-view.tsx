@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Award, Medal, Trophy, Users } from "lucide-react"
+import { Award, Medal, Trophy, Users, UserPlus, Clock, Calendar, Heart } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -48,6 +48,7 @@ export function SocialView({
     type: "habit",
     habitId: "",
   })
+  const [socialTab, setSocialTab] = useState("friends")
 
   const handleCreateChallenge = () => {
     if (newChallenge.name.trim()) {
@@ -81,461 +82,200 @@ export function SocialView({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Social Challenges</h2>
-        <p className="text-muted-foreground">Compete with friends and stay motivated</p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Social</h2>
+          <p className="text-muted-foreground">Connect with friends and join challenges</p>
+        </div>
+        <Button className="gap-2">
+          <UserPlus className="h-4 w-4" />
+          Add Friend
+        </Button>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="flex overflow-x-auto pb-px">
-          <TabsTrigger value="leaderboard">Leaderboard</TabsTrigger>
-          <TabsTrigger value="challenges">Challenges</TabsTrigger>
+      <Tabs value={socialTab} onValueChange={setSocialTab} className="space-y-4">
+        <TabsList>
           <TabsTrigger value="friends">Friends</TabsTrigger>
-          <TabsTrigger value="achievements">Achievements</TabsTrigger>
+          <TabsTrigger value="challenges">Challenges</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="leaderboard" className="space-y-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <TabsContent value="friends" className="space-y-4">
+          {friends.length === 0 ? (
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Trophy className="h-5 w-5 text-amber-500" />
-                  Weekly Leaderboard
-                </CardTitle>
-                <CardDescription>See how you rank against your friends this week</CardDescription>
+                <CardTitle>No Friends Yet</CardTitle>
+                <CardDescription>
+                  Add friends to share your habit journey and motivate each other.
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
-                      <Trophy className="h-5 w-5 text-amber-500" />
-                    </div>
-                    <Avatar className="h-10 w-10 border">
-                      <AvatarImage src="/placeholder.svg?height=40&width=40" alt="User" />
-                      <AvatarFallback>U</AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1">
-                      <div className="flex justify-between">
-                        <p className="text-sm font-medium leading-none">You</p>
-                        <p className="text-sm font-medium">88 pts</p>
-                      </div>
-                      <Progress value={88} max={100} className="h-2 mt-2" />
-                    </div>
-                  </div>
-
-                  {friends
-                    .sort((a, b) => b.weeklyScore - a.weeklyScore)
-                    .map((friend, index) => (
-                      <div key={friend.id} className="flex items-center gap-4">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                          {index === 0 ? (
-                            <Medal className="h-5 w-5 text-amber-500" />
-                          ) : index === 1 ? (
-                            <Medal className="h-5 w-5 text-slate-400" />
-                          ) : index === 2 ? (
-                            <Medal className="h-5 w-5 text-amber-700" />
-                          ) : (
-                            <span className="text-sm font-bold">{index + 2}</span>
-                          )}
-                        </div>
-                        <Avatar className="h-10 w-10 border">
-                          <AvatarImage src={friend.avatar} alt={friend.name} />
-                          <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex justify-between">
-                            <p className="text-sm font-medium leading-none">{friend.name}</p>
-                            <p className="text-sm font-medium">{friend.weeklyScore} pts</p>
-                          </div>
-                          <Progress value={friend.weeklyScore} max={100} className="h-2 mt-2" />
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </CardContent>
               <CardFooter>
-                <Button variant="outline" className="w-full">
-                  View Full Leaderboard
+                <Button className="gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  Add Friend
                 </Button>
               </CardFooter>
             </Card>
-          </motion.div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {friends.map((friend) => (
+                <Card key={friend.id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Avatar>
+                          <AvatarImage src={friend.avatar} alt={friend.name} />
+                          <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <CardTitle className="text-lg">{friend.name}</CardTitle>
+                          <div className="flex items-center text-sm text-muted-foreground">
+                            <Badge variant="outline" className="mr-2">
+                              <div className={`mr-1 h-2 w-2 rounded-full ${friend.status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                              {friend.status === 'online' ? 'Online' : 'Offline'}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1">
+                          <Trophy className="h-4 w-4 text-amber-500" />
+                          <span>Current Streak</span>
+                        </div>
+                        <span className="font-medium">{friend.streak || 0} days</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1">
+                          <Heart className="h-4 w-4 text-red-500" />
+                          <span>Weekly Score</span>
+                        </div>
+                        <span className="font-medium">{friend.weeklyScore || 0} pts</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button variant="outline" className="w-full">View Profile</Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="challenges" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="text-lg font-semibold">Active Challenges</h3>
-            <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-              <DialogTrigger asChild>
+          {challenges.length === 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>No Challenges Yet</CardTitle>
+                <CardDescription>
+                  Join or create challenges to compete with friends and stay motivated.
+                </CardDescription>
+              </CardHeader>
+              <CardFooter>
                 <Button>Create Challenge</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Challenge</DialogTitle>
-                  <DialogDescription>Invite friends to compete in a habit challenge</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="challenge-name">Challenge Name</Label>
-                    <Input
-                      id="challenge-name"
-                      placeholder="e.g., 30-Day Meditation Challenge"
-                      value={newChallenge.name}
-                      onChange={(e) => handleChange("name", e.target.value)}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="challenge-description">Description</Label>
-                    <Textarea
-                      id="challenge-description"
-                      placeholder="Describe the challenge rules and goals"
-                      value={newChallenge.description}
-                      onChange={(e) => handleChange("description", e.target.value)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="challenge-duration">Duration (Days)</Label>
-                      <Select value={newChallenge.duration} onValueChange={(value) => handleChange("duration", value)}>
-                        <SelectTrigger id="challenge-duration">
-                          <SelectValue placeholder="Select duration" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="7">7 days</SelectItem>
-                          <SelectItem value="14">14 days</SelectItem>
-                          <SelectItem value="30">30 days</SelectItem>
-                          <SelectItem value="60">60 days</SelectItem>
-                          <SelectItem value="90">90 days</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="challenge-type">Challenge Type</Label>
-                      <Select value={newChallenge.type} onValueChange={(value) => handleChange("type", value)}>
-                        <SelectTrigger id="challenge-type">
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="habit">Habit Completion</SelectItem>
-                          <SelectItem value="streak">Longest Streak</SelectItem>
-                          <SelectItem value="count">Highest Count</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleCreateChallenge}>Create Challenge</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <motion.div
-            className="grid gap-4 md:grid-cols-2"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ staggerChildren: 0.1 }}
-          >
-            {challenges.length === 0 ? (
-              <div className="md:col-span-2 flex flex-col items-center justify-center py-12 text-center">
-                <div className="text-4xl mb-4">🏆</div>
-                <h3 className="text-xl font-medium mb-2">No active challenges</h3>
-                <p className="text-muted-foreground mb-6 max-w-md">
-                  You don't have any active challenges. Create a challenge to compete with friends!
-                </p>
-                <Button onClick={() => setCreateDialogOpen(true)}>Create Your First Challenge</Button>
-              </div>
-            ) : (
-              challenges.map((challenge, index) => (
-                <motion.div
-                  key={challenge.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.1 }}
-                >
-                  <Card>
-                    <CardHeader>
-                      <div className="flex justify-between items-center">
+              </CardFooter>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {challenges.map((challenge) => (
+                <Card key={challenge.id}>
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
                         <CardTitle>{challenge.name}</CardTitle>
-                        <Badge
-                          className={
-                            challenge.type === "habit"
-                              ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900"
-                              : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900"
-                          }
-                        >
-                          {challenge.daysLeft} days left
-                        </Badge>
+                        <CardDescription>{challenge.description}</CardDescription>
                       </div>
-                      <CardDescription>{challenge.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src="/placeholder.svg?height=32&width=32" alt="User" />
-                            <AvatarFallback>U</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <div className="flex justify-between">
-                              <p className="text-sm font-medium">You</p>
-                              <p className="text-sm">
-                                {challenge.userProgress}/{challenge.totalDays} days
-                              </p>
-                            </div>
-                            <Progress
-                              value={(challenge.userProgress / challenge.totalDays) * 100}
-                              className="h-2 mt-1"
-                            />
-                          </div>
-                        </div>
-                        {challenge.participants.map((participant, idx) => (
-                          <div key={idx} className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage
-                                src={
-                                  friends.find((f) => f.id === participant.id)?.avatar ||
-                                  "/placeholder.svg?height=32&width=32"
-                                }
-                                alt={friends.find((f) => f.id === participant.id)?.name || "Participant"}
-                              />
-                              <AvatarFallback>
-                                {(friends.find((f) => f.id === participant.id)?.name || "P").charAt(0)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1">
-                              <div className="flex justify-between">
-                                <p className="text-sm font-medium">
-                                  {friends.find((f) => f.id === participant.id)?.name || "Participant"}
-                                </p>
-                                <p className="text-sm">
-                                  {participant.progress}/{challenge.totalDays} days
-                                </p>
+                      <Badge variant={challenge.isJoined ? "default" : "outline"}>
+                        {challenge.isJoined ? "Joined" : "Not Joined"}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      <div className="flex items-center gap-1">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span>{challenge.participants.length} participants</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span>{challenge.daysLeft} days left</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span>{challenge.type}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Your progress</span>
+                        <span className="font-medium">{challenge.userProgress}%</span>
+                      </div>
+                      <Progress value={challenge.userProgress} className="h-2" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Leaderboard</p>
+                      <div className="space-y-2">
+                        {challenge.participants
+                          .sort((a, b) => b.progress - a.progress)
+                          .slice(0, 3)
+                          .map((participant, index) => (
+                            <div key={participant.id} className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                                  {index + 1}
+                                </div>
+                                <span>{participant.name}</span>
                               </div>
-                              <Progress
-                                value={(participant.progress / challenge.totalDays) * 100}
-                                className="h-2 mt-1"
-                              />
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm font-medium">{participant.progress}%</span>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          ))}
                       </div>
-                    </CardContent>
-                    <CardFooter className="flex justify-between">
-                      <Button variant="outline">View Details</Button>
-                      <Button
-                        variant="ghost"
-                        className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/20"
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    {challenge.isJoined ? (
+                      <Button 
+                        variant="outline" 
+                        className="w-full" 
                         onClick={() => onLeaveChallenge(challenge.id)}
                       >
                         Leave Challenge
                       </Button>
-                    </CardFooter>
-                  </Card>
-                </motion.div>
-              ))
-            )}
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.3 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Challenge Ideas</CardTitle>
-                <CardDescription>Popular challenges to try with friends</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {[
-                    { name: "30-Day Fitness", description: "Exercise daily for a month" },
-                    { name: "Water Drinking", description: "Drink 8 glasses daily" },
-                    { name: "Early Bird", description: "Wake up before 6am" },
-                    { name: "Digital Detox", description: "Reduce screen time" },
-                    { name: "Gratitude Journal", description: "Write daily gratitudes" },
-                    { name: "Learn a Skill", description: "Practice 20 min daily" },
-                  ].map((challenge, index) => (
-                    <div
-                      key={index}
-                      className="rounded-lg border p-3 hover:bg-accent cursor-pointer transition-colors"
-                      onClick={() => {
-                        setNewChallenge({
-                          ...newChallenge,
-                          name: challenge.name,
-                          description: challenge.description,
-                        })
-                        setCreateDialogOpen(true)
-                      }}
-                    >
-                      <h4 className="font-medium">{challenge.name}</h4>
-                      <p className="text-sm text-muted-foreground mt-1">{challenge.description}</p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+                    ) : (
+                      <Button 
+                        className="w-full" 
+                        onClick={() => onJoinChallenge(challenge.id)}
+                      >
+                        Join Challenge
+                      </Button>
+                    )}
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
         </TabsContent>
 
-        <TabsContent value="friends" className="space-y-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Friends
-                </CardTitle>
-                <CardDescription>Connect with friends to compete and stay motivated</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {friends.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <div className="text-4xl mb-4">👥</div>
-                      <h3 className="text-xl font-medium mb-2">No friends yet</h3>
-                      <p className="text-muted-foreground mb-6 max-w-md">
-                        Add friends to compete in challenges and stay motivated together!
-                      </p>
-                    </div>
-                  ) : (
-                    friends.map((friend) => (
-                      <div key={friend.id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={friend.avatar} alt={friend.name} />
-                            <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="font-medium">{friend.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {friend.activeStreak > 0 ? `${friend.activeStreak} day streak` : "No active streak"}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {friend.activeStreak >= 7 && (
-                            <Award className="h-5 w-5 text-amber-500" title="7+ day streak" />
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setNewChallenge({
-                                ...newChallenge,
-                                name: `Challenge with ${friend.name}`,
-                                description: "Complete your habits every day!",
-                              })
-                              setCreateDialogOpen(true)
-                            }}
-                          >
-                            Challenge
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-              <CardFooter className="flex gap-2">
-                <Button className="w-full">Add Friends</Button>
-                <Button variant="outline" className="w-full">
-                  Find Friends
-                </Button>
-              </CardFooter>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Friend Suggestions</CardTitle>
-                <CardDescription>People you might know</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {[
-                    { name: "Alex Johnson", mutual: 3 },
-                    { name: "Emma Williams", mutual: 2 },
-                    { name: "Ryan Garcia", mutual: 5 },
-                    { name: "Olivia Brown", mutual: 1 },
-                  ].map((suggestion, index) => (
-                    <div key={index} className="flex items-center justify-between border rounded-lg p-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage
-                            src={`/placeholder.svg?height=40&width=40&text=${index}`}
-                            alt={suggestion.name}
-                          />
-                          <AvatarFallback>{suggestion.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <p className="font-medium">{suggestion.name}</p>
-                          <p className="text-sm text-muted-foreground">{suggestion.mutual} mutual friends</p>
-                        </div>
-                      </div>
-                      <Button size="sm">Add</Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </TabsContent>
-
-        <TabsContent value="achievements" className="space-y-4">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-            <Card>
-              <CardHeader>
-                <CardTitle>Your Achievements</CardTitle>
-                <CardDescription>Badges and milestones you've earned</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-3">
-                  {[
-                    { name: "Early Adopter", description: "Joined during beta", icon: "🚀", unlocked: true },
-                    { name: "Streak Master", description: "Maintained a 7-day streak", icon: "🔥", unlocked: true },
-                    { name: "Habit Enthusiast", description: "Created 5 habits", icon: "⭐", unlocked: true },
-                    {
-                      name: "Perfect Week",
-                      description: "Completed all habits for a week",
-                      icon: "🏆",
-                      unlocked: false,
-                    },
-                    { name: "Social Butterfly", description: "Added 5 friends", icon: "🦋", unlocked: false },
-                    { name: "Challenge Champion", description: "Won 3 challenges", icon: "🏅", unlocked: false },
-                  ].map((achievement, index) => (
-                    <div
-                      key={index}
-                      className={`rounded-lg border p-4 text-center ${achievement.unlocked ? "" : "opacity-50"}`}
-                    >
-                      <div className="text-3xl mb-2">{achievement.icon}</div>
-                      <h4 className="font-medium">{achievement.name}</h4>
-                      <p className="text-sm text-muted-foreground mt-1">{achievement.description}</p>
-                      {achievement.unlocked ? (
-                        <Badge className="mt-2 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900">
-                          Unlocked
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="mt-2">
-                          Locked
-                        </Badge>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+        <TabsContent value="activity">
+          <Card>
+            <CardHeader>
+              <CardTitle>Activity Feed</CardTitle>
+              <CardDescription>See what your friends have been up to</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-center text-muted-foreground py-6">
+                Activity feed is coming soon. Check back later!
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

@@ -15,6 +15,16 @@ export interface User {
     reminderTime: string
     calendarSync: boolean
     weekStartsOn: number
+    compactView: boolean
+    animations: boolean
+    streakAlerts: boolean
+    achievementAlerts: boolean
+    friendAlerts: boolean
+    defaultReminderTime: string
+    defaultCategory: string
+    publicProfile: boolean
+    shareProgress: boolean
+    analytics: boolean
   }
 }
 
@@ -29,6 +39,16 @@ const defaultUser: User = {
     reminderTime: "20:00",
     calendarSync: false,
     weekStartsOn: 0, // Sunday
+    compactView: false,
+    animations: true,
+    streakAlerts: true,
+    achievementAlerts: true,
+    friendAlerts: true,
+    defaultReminderTime: "09:00",
+    defaultCategory: "health",
+    publicProfile: false,
+    shareProgress: true,
+    analytics: true
   },
 }
 
@@ -40,6 +60,8 @@ const UserContext = createContext<{
   logout: () => void
   updateUser: (userData: Partial<User>) => void
   updatePreferences: (preferences: Partial<User["preferences"]>) => void
+  updateProfile: (profile: Partial<User>) => void
+  updatePassword: (currentPassword: string, newPassword: string) => void
 }>({
   user: null,
   isLoading: true,
@@ -47,6 +69,8 @@ const UserContext = createContext<{
   logout: () => {},
   updateUser: () => {},
   updatePreferences: () => {},
+  updateProfile: () => {},
+  updatePassword: () => {},
 })
 
 // Provider component
@@ -67,9 +91,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         if (savedUser) {
           setUser(JSON.parse(savedUser))
         } else {
-          // For demo purposes, auto-login with default user
-          setUser(defaultUser)
-          localStorage.setItem("habitTrackerUser", JSON.stringify(defaultUser))
+          // Don't automatically create a default user
+          // This ensures authentication is required
+          setUser(null)
         }
       } catch (error) {
         console.error("Authentication error:", error)
@@ -143,8 +167,41 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("habitTrackerUser", JSON.stringify(updatedUser))
   }
 
+  // Update user profile
+  const updateProfile = (profile: Partial<User>) => {
+    if (!user) return
+    
+    // This is basically the same as updateUser but specifically for profile fields
+    const updatedUser = {
+      ...user,
+      ...profile,
+    }
+    
+    setUser(updatedUser)
+    localStorage.setItem("habitTrackerUser", JSON.stringify(updatedUser))
+    console.log("Profile updated:", profile)
+  }
+  
+  // Update password
+  const updatePassword = (currentPassword: string, newPassword: string) => {
+    // In a real app, this would validate the current password and update it in the backend
+    // For demo purposes, we'll just log it
+    console.log("Password updated from", currentPassword, "to", newPassword)
+  }
+
   return (
-    <UserContext.Provider value={{ user, isLoading, login, logout, updateUser, updatePreferences }}>
+    <UserContext.Provider 
+      value={{ 
+        user, 
+        isLoading, 
+        login, 
+        logout, 
+        updateUser, 
+        updatePreferences,
+        updateProfile,
+        updatePassword
+      }}
+    >
       {children}
     </UserContext.Provider>
   )

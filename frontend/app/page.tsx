@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 
 export default function Home() {
-  // Redirect to dashboard for the interactive app
-  redirect("/dashboard")
+  // Redirect to login page to ensure authentication flow
+  redirect("/auth/login")
 }
 

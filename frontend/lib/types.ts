@@ -41,6 +41,8 @@ export interface Friend {
   avatar: string
   activeStreak: number
   weeklyScore: number
+  status?: 'online' | 'offline'
+  streak?: number
 }
 
 export interface Challenge {
@@ -48,11 +50,24 @@ export interface Challenge {
   name: string
   description: string
   type: string
-  participants: { id: string; progress: number }[]
+  participants: { id: string; progress: number; name?: string }[]
   startDate: string
   endDate: string
   userProgress: number
   totalDays: number
   daysLeft: number
+  isJoined?: boolean
+}
+
+export interface Notification {
+  id: string
+  message: string
+  timestamp: string
+  time: string
+  unread: boolean
+  type: 'reminder' | 'achievement' | 'social' | 'streak' | 'system' | 'friend'
+  // Optional properties
+  name?: string
+  avatar?: string
 }
 

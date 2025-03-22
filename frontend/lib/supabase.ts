@@ -7,17 +7,22 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase URL or Anonymous Key is missing!');
 }
 
-// DEV MODE: Uncomment the following line to enable dev mode authentication bypass
-const ENABLE_DEV_MODE = process.env.NODE_ENV === 'development';
+// DEV MODE: Set to false to ensure authentication is required
+const ENABLE_DEV_MODE = false;
 
-// Create client with persistent sessions in localStorage
+// Create client with persistent sessions
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     storageKey: 'habittrack-auth-session',
     autoRefreshToken: true,
+    // In production, use stricter settings
+    flowType: process.env.NODE_ENV === 'production' ? 'pkce' : 'implicit'
   }
 });
+
+// Log environment setting for debugging
+console.log(`Supabase client created in ${process.env.NODE_ENV} mode with flow type: ${process.env.NODE_ENV === 'production' ? 'pkce' : 'implicit'}`);
 
 // Helper functions for authentication
 export async function signUp(email: string, password: string, name: string) {
@@ -65,6 +70,9 @@ export async function signInWithGoogle() {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
   const redirectTo = `${appUrl}/auth/callback`;
   
+  console.log(`Google OAuth: Using redirect URL: ${redirectTo}`);
+  console.log(`Google OAuth: Environment: ${process.env.NODE_ENV}`);
+  
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
@@ -75,6 +83,12 @@ export async function signInWithGoogle() {
       }
     },
   });
+  
+  if (error) {
+    console.error('Google OAuth Error:', error);
+  } else {
+    console.log('Google OAuth: Redirect initiated successfully');
+  }
   
   return { data, error };
 }

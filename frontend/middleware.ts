@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 
-// Development mode flag - set to true to bypass auth for dashboard
-const BYPASS_AUTH_IN_DEV = true;
+// Development mode flag - set to false to ensure authentication is required
+const BYPASS_AUTH_IN_DEV = false;
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 export async function middleware(req: NextRequest) {
@@ -18,6 +18,18 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession();
 
+  // Enhanced logging for debugging
+  console.log(`
+  ------------------- AUTH DEBUG -------------------
+  Path: ${pathname}
+  Session exists: ${session ? 'YES' : 'NO'}
+  Environment: ${process.env.NODE_ENV}
+  User ID: ${session?.user?.id || 'none'}
+  User Email: ${session?.user?.email || 'none'}
+  Session expiry: ${session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A'}
+  ---------------------------------------------------
+  `);
+
   // AUTH LOGIC
   const isAuthRoute = pathname.startsWith('/auth');
   const isApiRoute = pathname.startsWith('/api');
@@ -27,6 +39,13 @@ export async function middleware(req: NextRequest) {
   const isSuccessRoute = pathname === '/auth/success'; // Allow access to success page regardless of auth
 
   console.log(`Middleware: Path ${pathname}, Session: ${session ? 'exists' : 'none'}`);
+
+  // If accessing the root URL, redirect to login page if not authenticated
+  if (pathname === '/' && !session) {
+    console.log('Redirecting from root to login page');
+    const redirectUrl = new URL('/auth/login', req.url);
+    return NextResponse.redirect(redirectUrl);
+  }
 
   // Bypass auth for dashboard in development mode if flag is enabled
   if (isDevelopment && BYPASS_AUTH_IN_DEV && isDashboardRoute) {
