@@ -1,22 +1,20 @@
 'use client';
 
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
 
 interface ProgressIndicatorProps {
-  className?: string;
   value: number;
   label: string;
 }
 
-export function ProgressIndicator({ className, value, label }: ProgressIndicatorProps) {
+export function ProgressIndicator({ value, label }: ProgressIndicatorProps) {
   return (
-    <div className={cn("rounded-lg bg-card p-4 shadow-sm border", className)}>
-      <h2 className="text-lg font-semibold text-muted-foreground mb-1">{label}</h2>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-4xl font-bold">{value}%</span>
+    <div className="bg-muted p-3 rounded-lg">
+      <div className="text-sm font-medium text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-2">
+        <div className="text-2xl font-bold">{value}%</div>
+        <Progress value={value} className="w-24 h-2" />
       </div>
-      <Progress value={value} className="h-2" />
     </div>
   );
 } 

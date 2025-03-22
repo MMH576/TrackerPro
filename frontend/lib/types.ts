@@ -10,6 +10,10 @@ export interface Habit {
   progress: number
   color?: string
   isFavorite: boolean
+  type?: 'yes-no' | 'counter' | 'timer'
+  icon?: string
+  logs?: { date: string; value: number }[]
+  days?: string[]
 }
 
 export interface User {

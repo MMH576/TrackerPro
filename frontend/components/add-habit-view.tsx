@@ -9,13 +9,17 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { ArrowLeft, Calendar } from "lucide-react"
+import { ArrowLeft, Calendar, Check, Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
+import { cn } from "@/lib/utils"
+import { Switch } from "@/components/ui/switch"
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useToast } from "@/hooks/use-toast"
 
 interface AddHabitViewProps {
   onAddHabit: (habit: any) => void
@@ -26,29 +30,32 @@ const formSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }).max(50),
   description: z.string().max(200).optional(),
   category: z.string(),
-  frequency: z.string(),
+  type: z.enum(["yes-no", "counter", "timer"]),
   goal: z.coerce.number().min(1),
-})
+  frequency: z.string(),
+  frequencyDays: z.array(z.string()).min(1, "Select at least one day"),
+  timeOfDay: z.string(),
+  reminderEnabled: z.boolean(),
+  reminderTime: z.string().optional(),
+  color: z.string().optional(),
+  icon: z.string().optional(),
+});
+
+const weekdays = [
+  { value: "1", label: "Mon" },
+  { value: "2", label: "Tue" },
+  { value: "3", label: "Wed" },
+  { value: "4", label: "Thu" },
+  { value: "5", label: "Fri" },
+  { value: "6", label: "Sat" },
+  { value: "0", label: "Sun" },
+];
 
 export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState("basic")
-  const [habitData, setHabitData] = useState({
-    name: "",
-    description: "",
-    category: "health",
-    type: "yes-no",
-    goal: 1,
-    frequency: "daily",
-    days: ["1", "2", "3", "4", "5"],
-    timeOfDay: "morning",
-    reminderEnabled: true,
-    reminderTime: "08:00",
-    missedReminderEnabled: false,
-    missedReminderTime: "21:00",
-    icon: "��",
-    color: "blue"
-  })
+  const { toast } = useToast()
+  const supabase = createClientComponentClient()
   
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -56,43 +63,21 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
       name: "",
       description: "",
       category: "health",
+      type: "yes-no",
       frequency: "daily",
+      frequencyDays: ["1", "2", "3", "4", "5", "6", "0"],
+      timeOfDay: "morning",
+      reminderEnabled: true,
+      reminderTime: "08:00",
       goal: 1,
+      color: "blue",
+      icon: "✨",
     },
   })
   
-  const handleChange = (field: string, value: any) => {
-    setHabitData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
-  
-  const handleDayToggle = (day: string) => {
-    const currentDays = [...habitData.days]
-    if (currentDays.includes(day)) {
-      handleChange("days", currentDays.filter(d => d !== day))
-    } else {
-      handleChange("days", [...currentDays, day])
-    }
-  }
-  
-  const handleSubmit = () => {
-    if (habitData.name.trim()) {
-      onAddHabit({
-        ...habitData,
-        id: `habit-${Date.now()}`,
-        streak: 0,
-        completedDates: [],
-        progress: 0,
-        isFavorite: false
-      })
-    }
-  }
-  
-  const isFormValid = () => {
-    return habitData.name.trim() !== ""
-  }
+  const habitType = form.watch("type")
+  const frequency = form.watch("frequency")
+  const reminderEnabled = form.watch("reminderEnabled")
   
   const handleTabChange = (value: string) => {
     setActiveTab(value)
@@ -101,10 +86,33 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
   const handleNext = () => {
     const tabs = ["basic", "schedule", "reminders", "appearance"]
     const currentIndex = tabs.indexOf(activeTab)
+    
     if (currentIndex < tabs.length - 1) {
+      // Validate current tab fields
+      switch (activeTab) {
+        case "basic":
+          form.trigger(["name", "description", "category", "type", "goal"])
+          if (form.formState.errors.name || form.formState.errors.category || form.formState.errors.type || form.formState.errors.goal) {
+            return
+          }
+          break
+        case "schedule":
+          form.trigger(["frequency", "frequencyDays", "timeOfDay"])
+          if (form.formState.errors.frequency || form.formState.errors.frequencyDays || form.formState.errors.timeOfDay) {
+            return
+          }
+          break
+        case "reminders":
+          form.trigger(["reminderEnabled", "reminderTime"])
+          if (reminderEnabled && form.formState.errors.reminderTime) {
+            return
+          }
+          break
+      }
+      
       setActiveTab(tabs[currentIndex + 1])
     } else {
-      handleSubmit()
+      form.handleSubmit(onSubmit)()
     }
   }
   
@@ -116,8 +124,80 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
     }
   }
   
-  const onSubmit = (values: z.infer<typeof formSchema>) => {
-    onAddHabit(values)
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        toast({
+          title: "Authentication error",
+          description: "You must be logged in to create habits",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Format frequency data for Supabase
+      const frequencyData = {
+        type: values.frequency,
+        days: values.frequencyDays.map(Number),
+      }
+      
+      // Create habit in Supabase
+      const { data, error } = await supabase
+        .from('habits')
+        .insert({
+          user_id: user.id,
+          name: values.name,
+          description: values.description || null,
+          icon: values.icon || '✨',
+          color: values.color || 'blue',
+          frequency: frequencyData,
+          target_count: values.goal,
+          remind_time: values.reminderEnabled ? values.reminderTime : null,
+        })
+        .select()
+      
+      if (error) {
+        throw error
+      }
+      
+      // Call onAddHabit with the returned data
+      const newHabit = {
+        id: data[0].id,
+        name: values.name,
+        description: values.description,
+        category: values.category,
+        type: values.type,
+        goal: values.goal,
+        frequency: values.frequency,
+        days: values.frequencyDays,
+        timeOfDay: values.timeOfDay,
+        reminderEnabled: values.reminderEnabled,
+        reminderTime: values.reminderTime,
+        icon: values.icon,
+        color: values.color,
+        streak: 0,
+        completedDates: [],
+        progress: 0,
+        isFavorite: false
+      }
+      
+      onAddHabit(newHabit)
+      
+      toast({
+        title: "Habit created!",
+        description: "Your new habit has been added successfully",
+      })
+    } catch (error) {
+      console.error('Error creating habit:', error)
+      toast({
+        title: "Failed to create habit",
+        description: "There was an error creating your habit. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
   
   return (
@@ -141,34 +221,87 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
           <TabsTrigger value="appearance">Appearance</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="basic" className="space-y-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Habit Details</CardTitle>
-                <CardDescription>Basic information about your habit</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <Form {...form}>
+          <TabsContent value="basic" className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle>Habit Details</CardTitle>
+                  <CardDescription>Basic information about your habit</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Habit Name*</FormLabel>
+                        <FormControl>
+                          <Input 
+                            id="habit-name" 
+                            placeholder="e.g., Morning Meditation"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>Enter a clear and specific name for your habit.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Description (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            id="habit-description" 
+                            placeholder="e.g., 10 minutes of mindfulness meditation each morning"
+                            className="min-h-[100px]"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>Add details about how to complete this habit.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <div className="grid gap-6 md:grid-cols-2">
                     <FormField
                       control={form.control}
-                      name="name"
+                      name="category"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Habit Name*</FormLabel>
+                          <FormLabel>Category</FormLabel>
                           <FormControl>
-                            <Input 
-                              id="habit-name" 
-                              placeholder="e.g., Morning Meditation"
-                              {...field}
-                            />
+                            <Select 
+                              onValueChange={field.onChange}
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger id="habit-category">
+                                  <SelectValue placeholder="Select category" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="health">Health</SelectItem>
+                                <SelectItem value="mindfulness">Mindfulness</SelectItem>
+                                <SelectItem value="productivity">Productivity</SelectItem>
+                                <SelectItem value="learning">Learning</SelectItem>
+                                <SelectItem value="finance">Finance</SelectItem>
+                                <SelectItem value="creativity">Creativity</SelectItem>
+                                <SelectItem value="social">Social</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </FormControl>
-                          <FormDescription>Enter a clear and specific name for your habit.</FormDescription>
+                          <FormDescription>Group similar habits together.</FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -176,215 +309,364 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
                     
                     <FormField
                       control={form.control}
-                      name="description"
+                      name="type"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Description (Optional)</FormLabel>
+                          <FormLabel>Habit Type</FormLabel>
                           <FormControl>
-                            <Textarea 
-                              id="habit-description" 
-                              placeholder="e.g., 10 minutes of mindfulness meditation each morning"
-                              className="min-h-[100px]"
-                              {...field}
-                            />
+                            <RadioGroup 
+                              onValueChange={field.onChange} 
+                              value={field.value}
+                              className="flex flex-col space-y-1"
+                            >
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem value="yes-no" />
+                                </FormControl>
+                                <FormLabel className="font-normal">
+                                  Yes/No
+                                </FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem value="counter" />
+                                </FormControl>
+                                <FormLabel className="font-normal">
+                                  Counter
+                                </FormLabel>
+                              </FormItem>
+                              <FormItem className="flex items-center space-x-3 space-y-0">
+                                <FormControl>
+                                  <RadioGroupItem value="timer" />
+                                </FormControl>
+                                <FormLabel className="font-normal">
+                                  Timer
+                                </FormLabel>
+                              </FormItem>
+                            </RadioGroup>
                           </FormControl>
-                          <FormDescription>Add details about how to complete this habit.</FormDescription>
+                          <FormDescription>
+                            {habitType === "yes-no" && "Simple completion tracking (did you do it or not)"}
+                            {habitType === "counter" && "Track a specific quantity (e.g., glasses of water)"}
+                            {habitType === "timer" && "Track duration (e.g., minutes of meditation)"}
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <FormField
-                        control={form.control}
-                        name="category"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Category</FormLabel>
-                            <FormControl>
-                              <Select 
-                                onValueChange={field.onChange}
-                                defaultValue={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger id="habit-category">
-                                    <SelectValue placeholder="Select category" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="health">Health</SelectItem>
-                                  <SelectItem value="mindfulness">Mindfulness</SelectItem>
-                                  <SelectItem value="productivity">Productivity</SelectItem>
-                                  <SelectItem value="learning">Learning</SelectItem>
-                                  <SelectItem value="finance">Finance</SelectItem>
-                                  <SelectItem value="creativity">Creativity</SelectItem>
-                                  <SelectItem value="social">Social</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </FormControl>
-                            <FormDescription>Group similar habits together.</FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="frequency"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Frequency</FormLabel>
-                            <FormControl>
-                              <Select 
-                                onValueChange={field.onChange}
-                                defaultValue={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select frequency" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  <SelectItem value="daily">Daily</SelectItem>
-                                  <SelectItem value="weekdays">Weekdays</SelectItem>
-                                  <SelectItem value="weekends">Weekends</SelectItem>
-                                  <SelectItem value="weekly">Weekly</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </FormControl>
-                            <FormDescription>How often you want to practice this habit.</FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    
+                  </div>
+                  
+                  {habitType !== "yes-no" && (
                     <FormField
                       control={form.control}
                       name="goal"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Goal (per day/week)</FormLabel>
+                          <FormLabel>Daily Goal</FormLabel>
                           <FormControl>
-                            <Input 
-                              id="habit-goal" 
-                              type="number" 
-                              min="1"
-                              {...field}
-                              className="w-24" 
-                            />
+                            <div className="flex items-center space-x-2">
+                              <Input 
+                                type="number" 
+                                min={1}
+                                {...field}
+                                className="w-20"
+                              />
+                              <span className="text-sm text-muted-foreground">
+                                {habitType === "counter" ? "units" : "minutes"}
+                              </span>
+                            </div>
                           </FormControl>
-                          <FormDescription>How many times to complete this habit each period.</FormDescription>
+                          <FormDescription>
+                            {habitType === "counter" 
+                              ? "How many units do you want to track daily?" 
+                              : "How many minutes do you want to track daily?"}
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </form>
-                </Form>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </TabsContent>
-        
-        <TabsContent value="schedule" className="space-y-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Schedule
-                </CardTitle>
-                <CardDescription>When do you want to perform this habit?</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2">
-                  <Label>Frequency</Label>
-                  <RadioGroup 
-                    value={habitData.frequency}
-                    onValueChange={(value) => handleChange("frequency", value)}
-                    className="grid grid-cols-1 md:grid-cols-2 gap-4"
-                  >
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="daily" id="daily" />
-                      <Label htmlFor="daily" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Daily</div>
-                        <div className="text-sm text-muted-foreground">Every day</div>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="weekly" id="weekly" />
-                      <Label htmlFor="weekly" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Weekly</div>
-                        <div className="text-sm text-muted-foreground">Specific days of the week</div>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="weekdays" id="weekdays" />
-                      <Label htmlFor="weekdays" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Weekdays</div>
-                        <div className="text-sm text-muted-foreground">Monday to Friday</div>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="weekends" id="weekends" />
-                      <Label htmlFor="weekends" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Weekends</div>
-                        <div className="text-sm text-muted-foreground">Saturday and Sunday</div>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="custom" id="custom" />
-                      <Label htmlFor="custom" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Custom</div>
-                        <div className="text-sm text-muted-foreground">Choose specific days</div>
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </TabsContent>
-        
-        <TabsContent value="reminders" className="space-y-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Card>
-              <CardHeader>
-                <CardTitle>Reminders</CardTitle>
-                <CardDescription>Set reminders for your habit</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2">
-                  <Label>Reminder Time</Label>
-                  <Input 
-                    id="reminder-time" 
-                    type="time"
-                    value={habitData.reminderTime}
-                    onChange={(e) => handleChange("reminderTime", e.target.value)}
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+          
+          <TabsContent value="schedule" className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle>Schedule</CardTitle>
+                  <CardDescription>When do you want to perform this habit?</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="frequency"
+                    render={({ field }) => (
+                      <FormItem className="space-y-3">
+                        <FormLabel>Frequency</FormLabel>
+                        <FormControl>
+                          <RadioGroup 
+                            onValueChange={field.onChange} 
+                            value={field.value}
+                            className="flex flex-col space-y-1"
+                          >
+                            <FormItem className="flex items-center space-x-3 space-y-0">
+                              <FormControl>
+                                <RadioGroupItem value="daily" />
+                              </FormControl>
+                              <FormLabel className="font-normal">
+                                Daily
+                              </FormLabel>
+                            </FormItem>
+                            <FormItem className="flex items-center space-x-3 space-y-0">
+                              <FormControl>
+                                <RadioGroupItem value="weekly" />
+                              </FormControl>
+                              <FormLabel className="font-normal">
+                                Specific days of the week
+                              </FormLabel>
+                            </FormItem>
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                </div>
-                <div className="grid gap-2">
-                  <Label>Missed Reminder Time</Label>
-                  <Input 
-                    id="missed-reminder-time" 
-                    type="time"
-                    value={habitData.missedReminderTime}
-                    onChange={(e) => handleChange("missedReminderTime", e.target.value)}
+                  
+                  {frequency === "weekly" && (
+                    <FormField
+                      control={form.control}
+                      name="frequencyDays"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Days of the Week</FormLabel>
+                          <FormControl>
+                            <div className="flex flex-wrap gap-2">
+                              {weekdays.map((day) => (
+                                <Button
+                                  key={day.value}
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className={cn(
+                                    "h-9 w-9 p-0",
+                                    field.value.includes(day.value) && "bg-primary text-primary-foreground"
+                                  )}
+                                  onClick={() => {
+                                    const newDays = field.value.includes(day.value)
+                                      ? field.value.filter((d) => d !== day.value)
+                                      : [...field.value, day.value]
+                                    field.onChange(newDays)
+                                  }}
+                                >
+                                  {day.label}
+                                </Button>
+                              ))}
+                            </div>
+                          </FormControl>
+                          <FormDescription>Select the days you want to perform this habit.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  
+                  <FormField
+                    control={form.control}
+                    name="timeOfDay"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Time of Day</FormLabel>
+                        <FormControl>
+                          <Select 
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select time of day" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="morning">Morning</SelectItem>
+                              <SelectItem value="afternoon">Afternoon</SelectItem>
+                              <SelectItem value="evening">Evening</SelectItem>
+                              <SelectItem value="anytime">Anytime</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FormControl>
+                        <FormDescription>When do you prefer to do this habit?</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
                   />
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </TabsContent>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+          
+          <TabsContent value="reminders" className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle>Reminders</CardTitle>
+                  <CardDescription>Set up notifications to help you stay on track</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="reminderEnabled"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                        <div className="space-y-0.5">
+                          <FormLabel className="text-base">Enable Reminders</FormLabel>
+                          <FormDescription>
+                            Receive notifications to complete your habit
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  
+                  {reminderEnabled && (
+                    <FormField
+                      control={form.control}
+                      name="reminderTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Reminder Time</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="time"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            When would you like to be reminded?
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+          
+          <TabsContent value="appearance" className="space-y-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Card>
+                <CardHeader>
+                  <CardTitle>Appearance</CardTitle>
+                  <CardDescription>Customize how your habit looks</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <FormField
+                    control={form.control}
+                    name="color"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Color</FormLabel>
+                        <FormControl>
+                          <div className="flex flex-wrap gap-2">
+                            {["blue", "green", "red", "purple", "orange", "pink", "slate"].map((color) => (
+                              <Button
+                                key={color}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className={cn(
+                                  "h-10 w-10 rounded-full p-0",
+                                  `bg-${color}-500 hover:bg-${color}-600`,
+                                  field.value === color && "ring-2 ring-offset-2"
+                                )}
+                                style={{ 
+                                  backgroundColor: `var(--${color}-500, ${color})`,
+                                  border: field.value === color ? '2px solid var(--ring, black)' : 'none' 
+                                }}
+                                onClick={() => field.onChange(color)}
+                              >
+                                {field.value === color && <Check className="h-4 w-4 text-white" />}
+                              </Button>
+                            ))}
+                          </div>
+                        </FormControl>
+                        <FormDescription>Choose a color for your habit</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <FormField
+                    control={form.control}
+                    name="icon"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Icon</FormLabel>
+                        <FormControl>
+                          <div className="flex flex-wrap gap-2">
+                            {["✨", "💪", "📚", "⏱️", "🧘", "💰", "🎨", "👥", "🏆", "🍎", "🌱", "🏃"].map((icon) => (
+                              <Button
+                                key={icon}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className={cn(
+                                  "h-10 w-10 p-0 text-lg",
+                                  field.value === icon && "bg-primary text-primary-foreground"
+                                )}
+                                onClick={() => field.onChange(icon)}
+                              >
+                                {icon}
+                              </Button>
+                            ))}
+                          </div>
+                        </FormControl>
+                        <FormDescription>Choose an icon for your habit</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+        </Form>
       </Tabs>
+      
+      <div className="flex justify-between">
+        <Button
+          variant="outline"
+          onClick={activeTab === "basic" ? onCancel : handleBack}
+        >
+          {activeTab === "basic" ? "Cancel" : "Back"}
+        </Button>
+        
+        <Button onClick={handleNext}>
+          {activeTab === "appearance" ? "Create Habit" : "Next"}
+          {activeTab !== "appearance" && <ArrowLeft className="ml-2 h-4 w-4 rotate-180" />}
+        </Button>
+      </div>
     </div>
   )
 }

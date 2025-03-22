@@ -51,6 +51,11 @@ CREATE PUBLICATION supabase_realtime FOR TABLE
 -- Profiles RLS
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if you want to recreate them
+DROP POLICY IF EXISTS "Users can view their own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
+
+-- Create policies
 CREATE POLICY "Users can view their own profile" 
   ON public.profiles FOR SELECT 
   USING (auth.uid() = id);
@@ -62,6 +67,13 @@ CREATE POLICY "Users can update their own profile"
 -- Habits RLS
 ALTER TABLE public.habits ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if you want to recreate them
+DROP POLICY IF EXISTS "Users can view their own habits" ON public.habits;
+DROP POLICY IF EXISTS "Users can create their own habits" ON public.habits;
+DROP POLICY IF EXISTS "Users can update their own habits" ON public.habits;
+DROP POLICY IF EXISTS "Users can delete their own habits" ON public.habits;
+
+-- Create policies
 CREATE POLICY "Users can view their own habits" 
   ON public.habits FOR SELECT 
   USING (auth.uid() = user_id);
@@ -81,6 +93,13 @@ CREATE POLICY "Users can delete their own habits"
 -- Habit Logs RLS
 ALTER TABLE public.habit_logs ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if you want to recreate them
+DROP POLICY IF EXISTS "Users can view their own habit logs" ON public.habit_logs;
+DROP POLICY IF EXISTS "Users can create their own habit logs" ON public.habit_logs;
+DROP POLICY IF EXISTS "Users can update their own habit logs" ON public.habit_logs;
+DROP POLICY IF EXISTS "Users can delete their own habit logs" ON public.habit_logs;
+
+-- Create policies
 CREATE POLICY "Users can view their own habit logs" 
   ON public.habit_logs FOR SELECT 
   USING (auth.uid() = user_id);

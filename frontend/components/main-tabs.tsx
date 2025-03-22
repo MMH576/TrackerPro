@@ -1,30 +1,29 @@
 'use client';
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CalendarDays, ListTodo } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MainTabsProps {
+  defaultValue?: string;
   className?: string;
-  activeTab: string;
-  onChange: (value: string) => void;
+  children: React.ReactNode;
 }
 
-export function MainTabs({ className, activeTab, onChange }: MainTabsProps) {
+export function MainTabs({ defaultValue = "today", className, children }: MainTabsProps) {
   return (
-    <div className={cn("flex justify-center", className)}>
-      <Tabs 
-        defaultValue={activeTab} 
-        value={activeTab} 
-        onValueChange={onChange}
-        className="w-full max-w-xl"
-      >
-        <TabsList className="grid grid-cols-4 w-full">
-          <TabsTrigger value="habits">Habits</TabsTrigger>
-          <TabsTrigger value="progress">Progress</TabsTrigger>
-          <TabsTrigger value="social">Social</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
-        </TabsList>
-      </Tabs>
-    </div>
+    <Tabs defaultValue={defaultValue} className={cn("space-y-4", className)}>
+      <TabsList className="grid w-full grid-cols-2 mb-4">
+        <TabsTrigger value="today" className="flex items-center gap-2">
+          <ListTodo className="h-4 w-4" />
+          Today
+        </TabsTrigger>
+        <TabsTrigger value="week" className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4" />
+          Week View
+        </TabsTrigger>
+      </TabsList>
+      {children}
+    </Tabs>
   );
 } 

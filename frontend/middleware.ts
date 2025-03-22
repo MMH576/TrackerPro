@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 
 // Development mode flag - set to false to ensure authentication is required
-const BYPASS_AUTH_IN_DEV = false;
+const BYPASS_AUTH_IN_DEV = true;
 const isDevelopment = process.env.NODE_ENV === 'development';
 
 export async function middleware(req: NextRequest) {
