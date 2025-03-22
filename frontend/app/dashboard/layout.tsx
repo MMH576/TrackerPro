@@ -4,9 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type React from "react"
-import { Header } from "@/components/header"
-import { MobileNav } from "@/components/mobile-nav"
-import { MainNav } from "@/components/main-nav"
+import { CustomHeader } from "@/components/custom-header"
 
 export default function DashboardLayout({
   children,
@@ -41,16 +39,12 @@ export default function DashboardLayout({
 
   return (
     <div className="relative min-h-screen bg-background">
-      <Header />
-      <div className="container mx-auto flex max-w-6xl">
-        <div className="hidden md:block">
-          <MainNav />
-        </div>
-        <main className="flex-1 p-4 md:p-6">
+      <CustomHeader />
+      <div className="container mx-auto max-w-6xl">
+        <main className="p-4">
           {children}
         </main>
       </div>
-      <MobileNav className="md:hidden" />
     </div>
   )
 }

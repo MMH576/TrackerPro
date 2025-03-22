@@ -1,76 +1,140 @@
 'use client';
 
+import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useHabits } from "@/hooks/use-habits";
 import { Button } from "@/components/ui/button";
+import { MainTabs } from "@/components/main-tabs";
+import { HabitFilters } from "@/components/habit-filters";
+import { ProgressIndicator } from "@/components/progress-indicator";
+import { HabitCard } from "@/components/habit-card";
+import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function Dashboard() {
-  const { user, loading, signOut } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
+  const { habits, toggleCompletion, deleteHabit, toggleFavorite } = useHabits();
+  const [activeTab, setActiveTab] = useState("habits");
+  const [activeFilter, setActiveFilter] = useState("all");
 
-  useEffect(() => {
-    // Add debug logging to help diagnose the issue
-    console.log('Dashboard: Mounted', { isLoading: loading, hasUser: !!user });
+  // Calculate today's progress
+  const calculateTodayProgress = () => {
+    if (habits.length === 0) return 0;
+    const today = new Date().toISOString().split("T")[0];
+    const completedToday = habits.filter(habit => 
+      habit.completedDates.includes(today)
+    ).length;
     
-    if (user) {
-      console.log('Dashboard: User authenticated', user.email);
-    } else if (!loading) {
-      // If not loading and no user is present, redirect to login
-      console.log('Dashboard: Not loading and no user, redirecting to login');
-      router.push('/auth/login');
-    }
-  }, [loading, user, router]);
+    return Math.round((completedToday / habits.length) * 100);
+  };
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      // Redirect is handled in the auth context
-    } catch (error) {
-      console.error('Error signing out:', error);
+  // Filter habits based on the active filter
+  const getFilteredHabits = () => {
+    const today = new Date().toISOString().split("T")[0];
+    
+    switch (activeFilter) {
+      case "today":
+        return habits.filter(habit => 
+          habit.frequency === "daily" || 
+          (habit.frequency === "weekdays" && [1, 2, 3, 4, 5].includes(new Date().getDay())) ||
+          (habit.frequency === "weekends" && [0, 6].includes(new Date().getDay()))
+        );
+      case "favorites":
+        return habits.filter(habit => habit.isFavorite);
+      case "completed":
+        return habits.filter(habit => habit.completedDates.includes(today));
+      default:
+        return habits;
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent mx-auto"></div>
-          <h2 className="text-2xl font-bold">Loading</h2>
-          <p className="text-muted-foreground">Please wait while we load your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    // This is a fallback - middleware should already handle this case
-    console.log('Dashboard: No user found, redirecting to login');
-    router.push('/auth/login');
-    return null;
-  }
-
   return (
     <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Welcome, {user.user_metadata?.full_name || user.email}</h1>
-          <p className="text-muted-foreground">Track your daily habits and build consistency</p>
-        </div>
-        <Button onClick={handleSignOut} variant="outline">
-          Sign Out
-        </Button>
+      <div className="mb-6">
+        <MainTabs 
+          activeTab={activeTab} 
+          onChange={setActiveTab} 
+        />
       </div>
       
-      <div className="grid gap-6">
-        <div className="rounded-lg border bg-card p-6">
-          <h2 className="text-xl font-semibold mb-4">Today's Habits</h2>
-          <div className="text-muted-foreground">
-            <p>You haven't created any habits yet.</p>
-            <p className="mt-2">Get started by adding your first habit!</p>
+      {activeTab === "habits" && (
+        <>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+            <div>
+              <h1 className="text-3xl font-bold">My Habits</h1>
+              <p className="text-muted-foreground">Track your daily habits and build consistency</p>
+            </div>
+            <div className="flex gap-4">
+              <ProgressIndicator 
+                label="Today's Progress" 
+                value={calculateTodayProgress()} 
+              />
+              <Button onClick={() => router.push('/dashboard/add-habit')}>
+                <Plus className="mr-2 h-4 w-4" /> Add Habit
+              </Button>
+            </div>
           </div>
+          
+          <div className="mb-6">
+            <HabitFilters
+              activeFilter={activeFilter}
+              onChange={setActiveFilter}
+            />
+          </div>
+          
+          {activeFilter === "categories" ? (
+            <div>Category view placeholder</div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {getFilteredHabits().map(habit => (
+                <HabitCard
+                  key={habit.id}
+                  habit={habit}
+                  onToggleCompletion={toggleCompletion}
+                  onDelete={deleteHabit}
+                  onToggleFavorite={toggleFavorite}
+                />
+              ))}
+              
+              {getFilteredHabits().length === 0 && (
+                <div className="col-span-full rounded-lg border bg-card p-6 text-center">
+                  <h3 className="text-lg font-semibold mb-2">No habits found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    {activeFilter === "all" 
+                      ? "You haven't created any habits yet. Get started by adding your first habit!" 
+                      : `No habits match the "${activeFilter}" filter.`}
+                  </p>
+                  <Button onClick={() => router.push('/dashboard/add-habit')}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Habit
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+      
+      {activeTab === "progress" && (
+        <div>
+          <h1 className="text-3xl font-bold mb-6">Progress</h1>
+          <p>Progress charts will appear here.</p>
         </div>
-      </div>
+      )}
+      
+      {activeTab === "social" && (
+        <div>
+          <h1 className="text-3xl font-bold mb-6">Social</h1>
+          <p>Social features will appear here.</p>
+        </div>
+      )}
+      
+      {activeTab === "settings" && (
+        <div>
+          <h1 className="text-3xl font-bold mb-6">Settings</h1>
+          <p>Settings will appear here.</p>
+        </div>
+      )}
     </div>
   );
 }

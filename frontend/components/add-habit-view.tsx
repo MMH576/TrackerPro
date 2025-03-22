@@ -12,11 +12,23 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ArrowLeft, Calendar } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import * as z from "zod"
 
 interface AddHabitViewProps {
   onAddHabit: (habit: any) => void
   onCancel: () => void
 }
+
+const formSchema = z.object({
+  name: z.string().min(2, { message: "Name must be at least 2 characters." }).max(50),
+  description: z.string().max(200).optional(),
+  category: z.string(),
+  frequency: z.string(),
+  goal: z.coerce.number().min(1),
+})
 
 export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
   const router = useRouter()
@@ -24,7 +36,7 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
   const [habitData, setHabitData] = useState({
     name: "",
     description: "",
-    category: "mindfulness",
+    category: "health",
     type: "yes-no",
     goal: 1,
     frequency: "daily",
@@ -34,8 +46,19 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
     reminderTime: "08:00",
     missedReminderEnabled: false,
     missedReminderTime: "21:00",
-    icon: "🧘",
+    icon: "��",
     color: "blue"
+  })
+  
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      category: "health",
+      frequency: "daily",
+      goal: 1,
+    },
   })
   
   const handleChange = (field: string, value: any) => {
@@ -93,6 +116,10 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
     }
   }
   
+  const onSubmit = (values: z.infer<typeof formSchema>) => {
+    onAddHabit(values)
+  }
+  
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -126,106 +153,134 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
                 <CardDescription>Basic information about your habit</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="habit-name">Habit Name*</Label>
-                  <Input 
-                    id="habit-name" 
-                    placeholder="e.g., Morning Meditation"
-                    value={habitData.name}
-                    onChange={(e) => handleChange("name", e.target.value)}
-                  />
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label htmlFor="habit-description">Description (Optional)</Label>
-                  <Textarea 
-                    id="habit-description" 
-                    placeholder="e.g., 10 minutes of mindfulness meditation each morning"
-                    className="min-h-[100px]"
-                    value={habitData.description}
-                    onChange={(e) => handleChange("description", e.target.value)}
-                  />
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label htmlFor="habit-category">Category</Label>
-                  <Select 
-                    value={habitData.category}
-                    onValueChange={(value) => handleChange("category", value)}
-                  >
-                    <SelectTrigger id="habit-category">
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="health">Health & Fitness</SelectItem>
-                      <SelectItem value="learning">Learning</SelectItem>
-                      <SelectItem value="productivity">Productivity</SelectItem>
-                      <SelectItem value="mindfulness">Mindfulness</SelectItem>
-                      <SelectItem value="finance">Finance</SelectItem>
-                      <SelectItem value="creativity">Creativity</SelectItem>
-                      <SelectItem value="social">Social</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label>Habit Type</Label>
-                  <RadioGroup 
-                    value={habitData.type}
-                    onValueChange={(value) => handleChange("type", value)}
-                    className="grid grid-cols-1 md:grid-cols-3 gap-4"
-                  >
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="yes-no" id="yes-no" />
-                      <Label htmlFor="yes-no" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Yes or No</div>
-                        <div className="text-sm text-muted-foreground">Simple completion tracking</div>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="custom" id="custom" />
-                      <Label htmlFor="custom" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Custom</div>
-                        <div className="text-sm text-muted-foreground">Choose specific days</div>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="counter" id="counter" />
-                      <Label htmlFor="counter" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Counter</div>
-                        <div className="text-sm text-muted-foreground">Track quantity (e.g., glasses of water)</div>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem value="timer" id="timer" />
-                      <Label htmlFor="timer" className="flex-1 cursor-pointer">
-                        <div className="font-medium">Timer</div>
-                        <div className="text-sm text-muted-foreground">Track duration (e.g., minutes of reading)</div>
-                      </Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-                
-                <div className="grid gap-2">
-                  <Label htmlFor="habit-goal">Daily Goal</Label>
-                  <div className="flex items-center gap-2">
-                    <Input 
-                      id="habit-goal" 
-                      type="number" 
-                      value={habitData.goal}
-                      onChange={(e) => handleChange("goal", Number.parseInt(e.target.value) || 1)}
-                      className="w-24" 
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Habit Name*</FormLabel>
+                          <FormControl>
+                            <Input 
+                              id="habit-name" 
+                              placeholder="e.g., Morning Meditation"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>Enter a clear and specific name for your habit.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                    <span className="text-muted-foreground">
-                      {habitData.type === "yes-no" 
-                        ? "times per day" 
-                        : habitData.type === "counter" 
-                        ? "units per day" 
-                        : "minutes per day"}
-                    </span>
-                  </div>
-                </div>
+                    
+                    <FormField
+                      control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Description (Optional)</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              id="habit-description" 
+                              placeholder="e.g., 10 minutes of mindfulness meditation each morning"
+                              className="min-h-[100px]"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormDescription>Add details about how to complete this habit.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="category"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Category</FormLabel>
+                            <FormControl>
+                              <Select 
+                                onValueChange={field.onChange}
+                                defaultValue={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger id="habit-category">
+                                    <SelectValue placeholder="Select category" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="health">Health</SelectItem>
+                                  <SelectItem value="mindfulness">Mindfulness</SelectItem>
+                                  <SelectItem value="productivity">Productivity</SelectItem>
+                                  <SelectItem value="learning">Learning</SelectItem>
+                                  <SelectItem value="finance">Finance</SelectItem>
+                                  <SelectItem value="creativity">Creativity</SelectItem>
+                                  <SelectItem value="social">Social</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                            <FormDescription>Group similar habits together.</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="frequency"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Frequency</FormLabel>
+                            <FormControl>
+                              <Select 
+                                onValueChange={field.onChange}
+                                defaultValue={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select frequency" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="daily">Daily</SelectItem>
+                                  <SelectItem value="weekdays">Weekdays</SelectItem>
+                                  <SelectItem value="weekends">Weekends</SelectItem>
+                                  <SelectItem value="weekly">Weekly</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                            <FormDescription>How often you want to practice this habit.</FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    
+                    <FormField
+                      control={form.control}
+                      name="goal"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Goal (per day/week)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              id="habit-goal" 
+                              type="number" 
+                              min="1"
+                              {...field}
+                              className="w-24" 
+                            />
+                          </FormControl>
+                          <FormDescription>How many times to complete this habit each period.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </form>
+                </Form>
               </CardContent>
             </Card>
           </motion.div>
@@ -282,5 +337,55 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2 rounded-md border p-3 cursor-pointer hover:bg-accent">
-                      <RadioGroupItem\
+                      <RadioGroupItem value="custom" id="custom" />
+                      <Label htmlFor="custom" className="flex-1 cursor-pointer">
+                        <div className="font-medium">Custom</div>
+                        <div className="text-sm text-muted-foreground">Choose specific days</div>
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
+        
+        <TabsContent value="reminders" className="space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle>Reminders</CardTitle>
+                <CardDescription>Set reminders for your habit</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2">
+                  <Label>Reminder Time</Label>
+                  <Input 
+                    id="reminder-time" 
+                    type="time"
+                    value={habitData.reminderTime}
+                    onChange={(e) => handleChange("reminderTime", e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label>Missed Reminder Time</Label>
+                  <Input 
+                    id="missed-reminder-time" 
+                    type="time"
+                    value={habitData.missedReminderTime}
+                    onChange={(e) => handleChange("missedReminderTime", e.target.value)}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
 

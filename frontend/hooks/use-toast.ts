@@ -2,7 +2,6 @@
 
 // Inspired by react-hot-toast library
 import * as React from "react"
-import { useState } from 'react'
 
 import type {
   ToastActionElement,
@@ -172,7 +171,7 @@ function toast({ ...props }: Toast) {
   }
 }
 
-function useToast() {
+export function useToast() {
   const [state, setState] = React.useState<State>(memoryState)
 
   React.useEffect(() => {
@@ -191,66 +190,3 @@ function useToast() {
     dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
   }
 }
-
-type ToastType = 'info' | 'success' | 'warning' | 'error'
-
-type Toast = {
-  id: string
-  title: string
-  description?: string
-  type: ToastType
-}
-
-export function useToast() {
-  const [toasts, setToasts] = useState<Toast[]>([])
-
-  const toast = (
-    title: string,
-    description?: string,
-    type: ToastType = 'info'
-  ) => {
-    const id = Math.random().toString(36).substring(2, 9)
-    const newToast = { id, title, description, type }
-    
-    setToasts((prev) => [...prev, newToast])
-    
-    // Auto-dismiss after 5 seconds
-    setTimeout(() => {
-      dismiss(id)
-    }, 5000)
-    
-    return id
-  }
-
-  const dismiss = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id))
-  }
-
-  const success = (title: string, description?: string) => {
-    return toast(title, description, 'success')
-  }
-
-  const error = (title: string, description?: string) => {
-    return toast(title, description, 'error')
-  }
-
-  const warning = (title: string, description?: string) => {
-    return toast(title, description, 'warning')
-  }
-
-  const info = (title: string, description?: string) => {
-    return toast(title, description, 'info')
-  }
-
-  return {
-    toasts,
-    toast,
-    dismiss,
-    success,
-    error,
-    warning,
-    info,
-  }
-}
-
-export { useToast, toast }
