@@ -129,10 +129,25 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       
-      if (!user) {
+      // Development mode fallback for authentication
+      const isDevelopment = process.env.NODE_ENV !== 'production'
+      
+      if (!user && !isDevelopment) {
         toast({
           title: "Authentication error",
           description: "You must be logged in to create habits",
+          variant: "destructive",
+        })
+        return
+      }
+      
+      // Use a mock user ID in development if no user is found
+      const userId = user?.id || (isDevelopment ? 'dev-user-123' : null)
+      
+      if (!userId) {
+        toast({
+          title: "Authentication error",
+          description: "Could not identify user. Please try logging in again.",
           variant: "destructive",
         })
         return
@@ -144,28 +159,46 @@ export function AddHabitView({ onAddHabit, onCancel }: AddHabitViewProps) {
         days: values.frequencyDays.map(Number),
       }
       
-      // Create habit in Supabase
-      const { data, error } = await supabase
-        .from('habits')
-        .insert({
-          user_id: user.id,
+      // Create habit in Supabase or mock in development
+      let habitData
+      
+      if (user) {
+        // Real API call if user exists
+        const { data, error } = await supabase
+          .from('habits')
+          .insert({
+            user_id: userId,
+            name: values.name,
+            description: values.description || null,
+            icon: values.icon || '✨',
+            color: values.color || 'blue',
+            frequency: frequencyData,
+            target_count: values.goal,
+            remind_time: values.reminderEnabled ? values.reminderTime : null,
+          })
+          .select()
+        
+        if (error) {
+          throw error
+        }
+        
+        habitData = data
+      } else {
+        // Mock data for development when no user
+        console.log('Creating habit in development mode with mock user')
+        habitData = [{
+          id: Math.random().toString(36).substring(2, 9),
+          user_id: userId,
           name: values.name,
           description: values.description || null,
           icon: values.icon || '✨',
           color: values.color || 'blue',
-          frequency: frequencyData,
-          target_count: values.goal,
-          remind_time: values.reminderEnabled ? values.reminderTime : null,
-        })
-        .select()
-      
-      if (error) {
-        throw error
+        }]
       }
       
       // Call onAddHabit with the returned data
       const newHabit = {
-        id: data[0]?.id || Math.random().toString(36).substring(2, 9),
+        id: habitData[0]?.id || Math.random().toString(36).substring(2, 9),
         name: values.name,
         description: values.description,
         category: values.category,

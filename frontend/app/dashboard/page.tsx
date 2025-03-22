@@ -21,7 +21,7 @@ import { motion } from "framer-motion";
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
-  const { habits, toggleCompletion, deleteHabit, toggleFavorite } = useHabits();
+  const { habits, toggleCompletion, deleteHabit, toggleFavorite, loadHabits } = useHabits();
   const [activeTab, setActiveTab] = useState("habits");
   const [activeFilter, setActiveFilter] = useState("all");
   const [mainTab, setMainTab] = useState("today");
@@ -156,6 +156,29 @@ export default function Dashboard() {
       };
     }).filter(category => category.count > 0);
   };
+
+  // Add an effect to reload habits when the component mounts
+  useEffect(() => {
+    const loadHabitsData = async () => {
+      console.log("Dashboard: Loading habits data");
+      await loadHabits();
+      console.log("Dashboard: Habits data loaded successfully");
+    };
+    
+    loadHabitsData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Add searchParams logging
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const refreshParam = url.searchParams.get('refresh');
+    if (refreshParam) {
+      console.log(`Dashboard: Detected refresh parameter: ${refreshParam}`);
+      loadHabits();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="container mx-auto py-6">

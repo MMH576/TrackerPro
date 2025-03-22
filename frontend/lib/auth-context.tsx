@@ -10,6 +10,7 @@ type AuthContextType = {
   loading: boolean;
   error: any | null;
   signOut: () => Promise<void>;
+  isDevelopmentMode: boolean;
 };
 
 // Create context
@@ -18,7 +19,18 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   error: null,
   signOut: async () => {},
+  isDevelopmentMode: false
 });
+
+// Development mode settings
+const ENABLE_DEV_AUTH_BYPASS = process.env.NODE_ENV !== 'production';
+const DEV_USER = ENABLE_DEV_AUTH_BYPASS ? {
+  id: 'dev-user-123',
+  email: 'dev@example.com',
+  user_metadata: {
+    full_name: 'Development User',
+  }
+} : null;
 
 // Auth Provider component
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -26,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<any | null>(null);
   const router = useRouter();
+  const isDevelopmentMode = process.env.NODE_ENV !== 'production';
 
   // Fetch current user data
   const fetchUser = async () => {
@@ -37,100 +50,118 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Handle "Auth session missing" error silently - this is normal when not logged in
         if (error.message?.includes('Auth session missing')) {
           console.log('AuthContext: No active session found - expected when not logged in');
-          setUser(null);
+          
+          // Use development mock user if enabled
+          if (ENABLE_DEV_AUTH_BYPASS) {
+            console.log('AuthContext: Using development mock user');
+            setUser(DEV_USER);
+          } else {
+            setUser(null);
+          }
         } else {
           // Log other errors as they might be actual issues
           console.error('AuthContext: Error fetching user', error);
           setError(error);
-          setUser(null);
+          
+          // Use development mock user if enabled
+          if (ENABLE_DEV_AUTH_BYPASS) {
+            console.log('AuthContext: Using development mock user despite error');
+            setUser(DEV_USER);
+          } else {
+            setUser(null);
+          }
         }
       } else if (data?.user) {
         console.log('AuthContext: User found', data.user.email);
         setUser(data.user);
       } else {
         console.log('AuthContext: No user found');
-        setUser(null);
-      }
-    } catch (err) {
-      console.error('AuthContext: Error fetching user', err);
-      setError(err);
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Sign out function
-  const signOut = async () => {
-    console.log('AuthContext: Signing out...');
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      
-      console.log('AuthContext: Signed out successfully');
-      setUser(null);
-      // Redirect to login
-      router.push('/auth/login');
-    } catch (err) {
-      console.error('AuthContext: Error signing out', err);
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Listen for auth state changes and fetch user on mount
-  useEffect(() => {
-    console.log('AuthContext: Setting up auth state listener');
-    
-    // Initial user fetch
-    fetchUser();
-    
-    // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log(`AuthContext: Auth state changed - Event: ${event}`);
-      
-      if (event === 'SIGNED_IN' && session) {
-        console.log('AuthContext: User signed in, fetching user data');
-        await fetchUser();
-        // Redirect to dashboard
-        router.push('/dashboard');
-      } else if (event === 'SIGNED_OUT') {
-        console.log('AuthContext: User signed out');
-        setUser(null);
-        router.push('/auth/login');
-      } else if (event === 'USER_UPDATED') {
-        console.log('AuthContext: User data updated, refreshing');
-        await fetchUser();
-      } else if (event === 'INITIAL_SESSION') {
-        if (session) {
-          console.log('AuthContext: Initial session with user, fetching data');
-          await fetchUser();
-          router.push('/dashboard');
+        // Use development mock user if enabled
+        if (ENABLE_DEV_AUTH_BYPASS) {
+          console.log('AuthContext: Using development mock user as fallback');
+          setUser(DEV_USER);
         } else {
-          console.log('AuthContext: Initial session without user - normal for unauthenticated users');
           setUser(null);
-          setLoading(false);
         }
       }
-    });
-    
-    // Cleanup
+    } catch (err) {
+      console.error('AuthContext: Unexpected error fetching user', err);
+      setError(err instanceof Error ? err : new Error('Failed to fetch user'));
+      
+      // Use development mock user if enabled
+      if (ENABLE_DEV_AUTH_BYPASS) {
+        console.log('AuthContext: Using development mock user after error');
+        setUser(DEV_USER);
+      } else {
+        setUser(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sign out the user
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('AuthContext: Sign out error', error);
+        setError(error);
+      } else {
+        console.log('AuthContext: Signed out successfully');
+        setUser(null);
+        // Redirect to home page after sign out
+        router.push('/auth/login');
+      }
+    } catch (err) {
+      console.error('AuthContext: Unexpected error during sign out', err);
+      setError(err instanceof Error ? err : new Error('Failed to sign out'));
+    }
+  };
+
+  // Auth state change listener and session refresh
+  useEffect(() => {
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('AuthContext: Auth state changed', event);
+        
+        if (event === 'SIGNED_IN' && session) {
+          console.log('AuthContext: User signed in', session.user.id);
+          setUser(session.user);
+        } else if (event === 'SIGNED_OUT') {
+          console.log('AuthContext: User signed out');
+          
+          // Use development mock user if enabled
+          if (ENABLE_DEV_AUTH_BYPASS) {
+            console.log('AuthContext: Using development mock user after sign out');
+            setUser(DEV_USER);
+          } else {
+            setUser(null);
+          }
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('AuthContext: Token refreshed');
+          // Re-fetch user to get latest data
+          fetchUser();
+        }
+      }
+    );
+
+    // Initial fetch
+    fetchUser();
+
+    // Clean up subscription
     return () => {
-      authListener?.subscription.unsubscribe();
+      subscription.unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, error, signOut }}>
+    <AuthContext.Provider value={{ user, loading, error, signOut: handleSignOut, isDevelopmentMode }}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-// Hook for using auth
-export function useAuth() {
-  return useContext(AuthContext);
-} 
+// Custom hook to use auth context
+export const useAuth = () => useContext(AuthContext); 

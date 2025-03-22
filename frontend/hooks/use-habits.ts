@@ -130,9 +130,39 @@ export function useHabits() {
       // Get the current user
       const { data: { user } } = await supabase.auth.getUser();
       
+      // Check for development mode
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      
+      // For development mode, try to load habits from localStorage first
+      if (isDevelopment) {
+        try {
+          const storedHabits = localStorage.getItem('dev_habits');
+          if (storedHabits) {
+            console.log('Loading habits from localStorage');
+            setHabits(JSON.parse(storedHabits));
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Failed to load habits from localStorage:', e);
+        }
+      }
+      
       if (!user) {
+        console.log('No authenticated user found, using mock data for development');
         // If no user, use mock data for development
-        setHabits(MOCK_HABITS);
+        const initialHabits = MOCK_HABITS;
+        setHabits(initialHabits);
+        
+        // In development mode, save to localStorage
+        if (isDevelopment) {
+          try {
+            localStorage.setItem('dev_habits', JSON.stringify(initialHabits));
+          } catch (e) {
+            console.warn('Failed to save habits to localStorage:', e);
+          }
+        }
+        
         return;
       }
       
@@ -147,8 +177,20 @@ export function useHabits() {
       if (habitsError) throw habitsError;
       
       if (!habitsData || habitsData.length === 0) {
-        // If no habits found, use mock data for now
-        setHabits(MOCK_HABITS);
+        console.log('No habits found in database, using initial data');
+        // If no habits found, use initial data that can be modified
+        const initialHabits = isDevelopment ? MOCK_HABITS : [];
+        setHabits(initialHabits);
+        
+        // In development mode, save to localStorage
+        if (isDevelopment) {
+          try {
+            localStorage.setItem('dev_habits', JSON.stringify(initialHabits));
+          } catch (e) {
+            console.warn('Failed to save habits to localStorage:', e);
+          }
+        }
+        
         return;
       }
       
@@ -214,10 +256,37 @@ export function useHabits() {
       });
       
       setHabits(transformedHabits);
+      
+      // In development mode, save to localStorage
+      if (isDevelopment) {
+        try {
+          localStorage.setItem('dev_habits', JSON.stringify(transformedHabits));
+        } catch (e) {
+          console.warn('Failed to save habits to localStorage:', e);
+        }
+      }
     } catch (err) {
       console.error('Error loading habits:', err);
       setError(err instanceof Error ? err : new Error('Failed to load habits'));
-      // Fallback to mock data in case of error
+      
+      // For development mode, try to load habits from localStorage as fallback
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      if (isDevelopment) {
+        try {
+          const storedHabits = localStorage.getItem('dev_habits');
+          if (storedHabits) {
+            console.log('Error occurred, falling back to localStorage habits');
+            setHabits(JSON.parse(storedHabits));
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('Failed to load habits from localStorage:', e);
+        }
+      }
+      
+      // Last resort fallback to mock data
+      console.log('Error occurred, falling back to mock data');
       setHabits(MOCK_HABITS);
     } finally {
       setLoading(false);
@@ -300,6 +369,18 @@ export function useHabits() {
     return Math.round((logsThisMonth.length / daysPassed) * 100);
   };
 
+  // Helper function to save habits to localStorage in development mode
+  const saveToLocalStorage = (habitsData: Habit[]) => {
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        localStorage.setItem('dev_habits', JSON.stringify(habitsData));
+        console.log('Saved habits to localStorage');
+      } catch (e) {
+        console.warn('Failed to save habits to localStorage:', e);
+      }
+    }
+  };
+
   const addHabit = async (habitData: Omit<Habit, 'id' | 'streak' | 'completedDates' | 'progress' | 'logs'>) => {
     try {
       setLoading(true);
@@ -307,8 +388,18 @@ export function useHabits() {
       // Get the current user
       const { data: { user } } = await supabase.auth.getUser();
       
-      if (!user) {
+      // Check for development mode
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      
+      if (!user && !isDevelopment) {
         throw new Error('Authentication required');
+      }
+      
+      // Use development user ID if no user found
+      const userId = user?.id || (isDevelopment ? 'dev-user-123' : null);
+      
+      if (!userId) {
+        throw new Error('User ID required');
       }
       
       // Format frequency data based on the Supabase schema
@@ -322,11 +413,55 @@ export function useHabits() {
         )
       };
       
+      // For development mode without a real user, skip Supabase and use mock data
+      if (!user && isDevelopment) {
+        console.log('Development mode: Creating mock habit without Supabase');
+        
+        // Create a new habit object with mock ID
+        const mockId = Math.random().toString(36).substring(2, 9);
+        
+        // Create days array for the frontend habit
+        const daysArray = habitData.days 
+          ? habitData.days.map((day: string | number) => day.toString()) 
+          : (habitData.frequency === 'daily' 
+              ? ['0', '1', '2', '3', '4', '5', '6'] 
+              : habitData.frequency === 'weekdays'
+                ? ['1', '2', '3', '4', '5']
+                : habitData.frequency === 'weekends'
+                  ? ['0', '6']
+                  : ['1'] // Default to Monday for weekly
+            );
+        
+        const newHabit: Habit = {
+          id: mockId,
+          name: habitData.name,
+          description: habitData.description || '',
+          category: habitData.category,
+          frequency: habitData.frequency,
+          type: habitData.type || 'yes-no',
+          goal: habitData.goal || 1,
+          streak: 0,
+          completedDates: [],
+          progress: 0,
+          isFavorite: false,
+          icon: habitData.icon || '✨',
+          color: habitData.color || 'blue',
+          logs: [],
+          days: daysArray
+        };
+        
+        const updatedHabits = [...habits, newHabit];
+        setHabits(updatedHabits);
+        saveToLocalStorage(updatedHabits);
+        
+        return { data: newHabit, error: null };
+      }
+      
       // Insert habit into Supabase
       const { data, error } = await supabase
         .from('habits')
         .insert({
-          user_id: user.id,
+          user_id: userId,
           name: habitData.name,
           description: habitData.description || null,
           icon: habitData.icon || '✨',
@@ -375,7 +510,12 @@ export function useHabits() {
         days: daysArray
       };
       
-      setHabits((prevHabits) => [...prevHabits, newHabit]);
+      const updatedHabits = [...habits, newHabit];
+      setHabits(updatedHabits);
+      
+      // Save to localStorage in development mode
+      saveToLocalStorage(updatedHabits);
+      
       return { data: newHabit, error: null };
     } catch (err) {
       console.error('Error adding habit:', err);
@@ -402,7 +542,12 @@ export function useHabits() {
           (habitData.frequency === 'daily' ? ['0', '1', '2', '3', '4', '5', '6'] : ['1', '2', '3', '4', '5'])
       };
       
-      setHabits((prevHabits) => [...prevHabits, mockHabit]);
+      const updatedHabits = [...habits, mockHabit];
+      setHabits(updatedHabits);
+      
+      // Save to localStorage in development mode
+      saveToLocalStorage(updatedHabits);
+      
       return { data: mockHabit, error };
     } finally {
       setLoading(false);
@@ -428,7 +573,12 @@ export function useHabits() {
       }
       
       // Remove from local state regardless of Supabase success
-      setHabits((prevHabits) => prevHabits.filter(habit => habit.id !== id));
+      const updatedHabits = habits.filter(habit => habit.id !== id);
+      setHabits(updatedHabits);
+      
+      // Save to localStorage in development mode
+      saveToLocalStorage(updatedHabits);
+      
       return { error: null };
     } catch (err) {
       console.error('Error deleting habit:', err);
@@ -436,7 +586,12 @@ export function useHabits() {
       setError(error);
       
       // Remove from local state even if Supabase fails
-      setHabits((prevHabits) => prevHabits.filter(habit => habit.id !== id));
+      const updatedHabits = habits.filter(habit => habit.id !== id);
+      setHabits(updatedHabits);
+      
+      // Save to localStorage in development mode
+      saveToLocalStorage(updatedHabits);
+      
       return { error };
     } finally {
       setLoading(false);
@@ -523,19 +678,22 @@ export function useHabits() {
       const newProgress = Math.round((completedThisMonth / daysPassed) * 100);
       
       // Update the habit in state
-      setHabits((prevHabits) => 
-        prevHabits.map(h => 
-          h.id === id 
-            ? {
-                ...h,
-                completedDates: newCompletedDates,
-                streak: newStreak,
-                progress: newProgress,
-                logs: newLogs
-              } 
-            : h
-        )
+      const updatedHabits = habits.map(h => 
+        h.id === id 
+          ? {
+              ...h,
+              completedDates: newCompletedDates,
+              streak: newStreak,
+              progress: newProgress,
+              logs: newLogs
+            } 
+          : h
       );
+      
+      setHabits(updatedHabits);
+      
+      // Save to localStorage in development mode
+      saveToLocalStorage(updatedHabits);
       
       return { error: null };
     } catch (err) {
@@ -553,11 +711,14 @@ export function useHabits() {
       setLoading(true);
       
       // Update in state
-      setHabits((prevHabits) => 
-        prevHabits.map(habit => 
-          habit.id === id ? { ...habit, isFavorite: !habit.isFavorite } : habit
-        )
+      const updatedHabits = habits.map(habit => 
+        habit.id === id ? { ...habit, isFavorite: !habit.isFavorite } : habit
       );
+      
+      setHabits(updatedHabits);
+      
+      // Save to localStorage in development mode
+      saveToLocalStorage(updatedHabits);
       
       // Get the current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -585,6 +746,27 @@ export function useHabits() {
     }
   };
 
+  // Clear all habits data (useful for testing and debugging)
+  const clearHabits = () => {
+    try {
+      console.log('Clearing all habits data');
+      setHabits([]);
+      
+      // Clear localStorage if in development mode
+      if (process.env.NODE_ENV !== 'production') {
+        localStorage.removeItem('dev_habits');
+        console.log('Cleared localStorage habits data');
+      }
+      
+      return { error: null };
+    } catch (err) {
+      console.error('Error clearing habits:', err);
+      const error = err instanceof Error ? err : new Error('Failed to clear habits');
+      setError(error);
+      return { error };
+    }
+  };
+
   return {
     habits,
     loading,
@@ -593,6 +775,7 @@ export function useHabits() {
     deleteHabit,
     toggleCompletion,
     toggleFavorite,
-    loadHabits
+    loadHabits,
+    clearHabits
   };
 } 
