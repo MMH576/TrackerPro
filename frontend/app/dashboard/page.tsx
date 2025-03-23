@@ -8,6 +8,7 @@ import { MainTabs } from "@/components/main-tabs";
 import { HabitFilters } from "@/components/habit-filters";
 import { ProgressIndicator } from "@/components/progress-indicator";
 import { HabitCard } from "@/components/habit-card";
+import { DashboardAnalytics } from "@/components/dashboard-analytics";
 import { Plus, CalendarDays } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -365,10 +366,17 @@ export default function Dashboard() {
             )}
           </TabsContent>
 
-          <TabsContent value="progress">
-            <div>
-              <h1 className="text-3xl font-bold mb-6">Progress</h1>
-              <p>Progress charts will appear here.</p>
+          <TabsContent value="progress" className="mt-0 space-y-4">
+            <DashboardAnalytics />
+            
+            <div className="mt-6">
+              <Button 
+                onClick={() => router.push('/dashboard/progress')}
+                variant="outline"
+                className="w-full"
+              >
+                View Detailed Analytics
+              </Button>
             </div>
           </TabsContent>
 

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { LineChart } from "@/components/charts/line-chart"
 import { BarChart } from "@/components/charts/bar-chart"
 import { HeatmapChart } from "@/components/charts/heatmap-chart"
+import { OverviewCharts } from "@/components/charts/overview-charts"
 import type { Habit } from "@/lib/types"
 import { motion } from "framer-motion"
 
@@ -162,87 +163,7 @@ export function ProgressView({ habits }: ProgressViewProps) {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          <motion.div
-            className="grid gap-4 md:grid-cols-3"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ staggerChildren: 0.1 }}
-          >
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{getOverallCompletionRate()}%</div>
-                  <p className="text-xs text-muted-foreground">+12% from last month</p>
-                  <div className="mt-4 h-[120px]">
-                    <LineChart
-                      data={monthlyData.map((d) => ({
-                        name: d.date,
-                        value: d.percentage,
-                      }))}
-                      height={120}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-            >
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Current Streak</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">{getLongestStreak()} days</div>
-                  <p className="text-xs text-muted-foreground">Your longest streak: {getLongestStreak()} days</p>
-                  <div className="mt-4 h-[120px]">
-                    <BarChart
-                      data={habits.slice(0, 5).map((h) => ({
-                        name: h.name.length > 10 ? h.name.substring(0, 10) + "..." : h.name,
-                        value: h.streak,
-                      }))}
-                      height={120}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.2 }}
-            >
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Most Consistent</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold">
-                    {mostConsistentHabit
-                      ? mostConsistentHabit.name.length > 15
-                        ? mostConsistentHabit.name.substring(0, 15) + "..."
-                        : mostConsistentHabit.name
-                      : "No habits yet"}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {mostConsistentHabit
-                      ? `${mostConsistentHabit.progress}% completion rate`
-                      : "Add habits to see stats"}
-                  </p>
-                  <div className="mt-4 h-[120px]">
-                    <HeatmapChart height={120} />
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </motion.div>
+          <OverviewCharts habits={habits} timePeriod={timePeriod as "7days" | "30days" | "90days" | "year"} />
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -254,14 +175,16 @@ export function ProgressView({ habits }: ProgressViewProps) {
                 <CardTitle>Monthly Overview</CardTitle>
                 <CardDescription>Your habit completion over the past 30 days</CardDescription>
               </CardHeader>
-              <CardContent className="h-[300px]">
-                <LineChart
-                  data={monthlyData.map((d) => ({
-                    name: d.date,
-                    value: d.percentage,
-                  }))}
-                  height={300}
-                />
+              <CardContent>
+                <div className="h-[250px]">
+                  <LineChart
+                    data={monthlyData.map((d) => ({
+                      name: d.date,
+                      value: d.percentage,
+                    }))}
+                    height={250}
+                  />
+                </div>
               </CardContent>
             </Card>
           </motion.div>
