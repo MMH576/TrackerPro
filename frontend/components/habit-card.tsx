@@ -105,18 +105,24 @@ export function HabitCard({ habit, onToggleCompletion, onDelete, onToggleFavorit
           ? "border-green-200 dark:border-green-900 bg-green-50 dark:bg-green-950/20"
           : completionStatus === "partial"
           ? "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/20"
-          : ""
+          : "",
+        "h-full flex flex-col"
       )}
     >
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-2 flex-shrink-0">
         <div className="flex justify-between items-start">
-          <div className="flex items-center gap-2">
-            <span className="text-xl" aria-hidden="true">
+          <div className="flex items-center gap-2 min-w-0 max-w-[calc(100%-60px)]">
+            <span className="text-xl flex-shrink-0" aria-hidden="true">
               {getCategoryIcon(habit.category)}
             </span>
-            <CardTitle className="text-lg">{habit.name}</CardTitle>
+            <CardTitle 
+              className="text-lg truncate"
+              title={habit.name}
+            >
+              {habit.name}
+            </CardTitle>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1 flex-shrink-0 ml-2">
             <Button
               variant="ghost"
               size="icon"
@@ -142,9 +148,9 @@ export function HabitCard({ habit, onToggleCompletion, onDelete, onToggleFavorit
             </Button>
           </div>
         </div>
-        {habit.description && <CardDescription>{habit.description}</CardDescription>}
+        {habit.description && <CardDescription className="line-clamp-2">{habit.description}</CardDescription>}
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-grow">
         <div className="flex items-center gap-2 mb-2">
           <Trophy className="h-4 w-4 text-amber-500" />
           <div className="text-sm font-medium">
@@ -157,12 +163,6 @@ export function HabitCard({ habit, onToggleCompletion, onDelete, onToggleFavorit
             Last completed: {format(new Date(lastCompletedDate), "MMM d, yyyy")}
           </div>
         )}
-        
-        <div className="flex items-center gap-2 mb-2">
-          <div className="text-sm text-muted-foreground">Progress this month:</div>
-          <div className="text-sm font-medium">{habit.progress}%</div>
-        </div>
-        <Progress value={habit.progress} className="h-2" />
         
         {habit.type === "counter" && !isCompletedToday() && (
           <div className="mt-4 flex items-center gap-2">
@@ -195,21 +195,25 @@ export function HabitCard({ habit, onToggleCompletion, onDelete, onToggleFavorit
           </div>
         )}
       </CardContent>
-      <CardFooter>
+      <CardFooter className="flex-shrink-0 pt-0">
         <Button
           variant={isCompletedToday() ? "outline" : "default"}
-          className={cn(
-            "w-full gap-2",
-            completionStatus === "partial" && "bg-amber-500 hover:bg-amber-600"
-          )}
-          onClick={handleToggleCompletion}
+          className="w-full"
+          onClick={() => {
+            if (habit.type === "yes-no") {
+              onToggleCompletion(habit.id);
+            } else if (habit.type === "counter") {
+              onToggleCompletion(habit.id, counterValue);
+            } else if (habit.type === "timer") {
+              onToggleCompletion(habit.id, timerValue);
+            }
+          }}
         >
-          {getHabitTypeIcon()}
-          {completionStatus === "complete" 
+          {isCompletedToday() 
             ? "Completed" 
             : completionStatus === "partial" 
-            ? "Partially Complete" 
-            : "Mark as Complete"}
+              ? "Complete"
+              : "Mark as Complete"}
         </Button>
       </CardFooter>
     </Card>

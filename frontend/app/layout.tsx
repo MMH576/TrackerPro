@@ -2,23 +2,23 @@ import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
-import { Toaster } from '@/components/ui/toaster'
-import { AuthProvider } from '@/lib/auth-context'
 import { UserProvider } from '@/hooks/use-user'
+import { AuthProvider } from '@/lib/auth-context'
 import { CustomHeader } from '@/components/custom-header'
+import { Toaster } from '@/components/ui/toaster'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'HabitHero - Build Better Habits',
-  description: 'Track and build better habits with HabitHero',
+  title: 'TrackerPro - Track Your Habits',
+  description: 'Track your habits, compete with friends, and stay motivated',
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode
-}>) {
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} antialiased`}>
@@ -29,13 +29,7 @@ export default function RootLayout({
         >
           <AuthProvider>
             <UserProvider>
-              <div className="min-h-screen flex flex-col">
-                <CustomHeader />
-                <main className="flex-1 overflow-hidden">
-                  {children}
-                </main>
-              </div>
-              <Toaster />
+              {children}
             </UserProvider>
           </AuthProvider>
         </ThemeProvider>

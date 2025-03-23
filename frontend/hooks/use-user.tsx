@@ -1,42 +1,44 @@
 "use client"
 
-import type React from "react"
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-import { useState, useEffect, createContext, useContext } from "react"
-
-// Define user type
+// User type definition
 export interface User {
-  id: string
-  name: string
-  email: string
-  avatar: string
-  preferences: {
-    reminderEnabled: boolean
-    reminderTime: string
-    calendarSync: boolean
-    weekStartsOn: number
-    compactView: boolean
-    animations: boolean
-    streakAlerts: boolean
-    achievementAlerts: boolean
-    friendAlerts: boolean
-    defaultReminderTime: string
-    defaultCategory: string
-    publicProfile: boolean
-    shareProgress: boolean
-    analytics: boolean
-  }
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  role: string;
+  createdAt: string;
+  settings: {
+    darkMode: boolean;
+    notifications: boolean;
+    calendarSync: boolean;
+    weekStartsOn: number;
+    compactView: boolean;
+    animations: boolean;
+    streakAlerts: boolean;
+    achievementAlerts: boolean;
+    friendAlerts: boolean;
+    defaultReminderTime: string;
+    defaultCategory: string;
+    publicProfile: boolean;
+    shareProgress: boolean;
+    analytics: boolean;
+  };
 }
 
-// Default user data
+// Default mock user data
 const defaultUser: User = {
-  id: "user1",
-  name: "Alex Johnson",
-  email: "alex@example.com",
-  avatar: "/placeholder.svg?height=40&width=40",
-  preferences: {
-    reminderEnabled: true,
-    reminderTime: "20:00",
+  id: 'user1',
+  name: 'Test User',
+  email: 'demo@example.com',
+  avatar: '/placeholder.svg?height=40&width=40',
+  role: 'user',
+  createdAt: new Date().toISOString(),
+  settings: {
+    darkMode: true,
+    notifications: true,
     calendarSync: false,
     weekStartsOn: 0, // Sunday
     compactView: false,
@@ -50,169 +52,219 @@ const defaultUser: User = {
     shareProgress: true,
     analytics: true
   },
+};
+
+interface UserContextType {
+  user: User | null;
+  isLoading: boolean;
+  error: Error | null;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<{ success: boolean; error: Error | null }>;
+  logout: () => Promise<{ success: boolean; error: Error | null }>;
+  signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error: Error | null }>;
 }
 
 // Create context
-const UserContext = createContext<{
-  user: User | null
-  isLoading: boolean
-  login: (email: string, password: string) => Promise<boolean>
-  logout: () => void
-  updateUser: (userData: Partial<User>) => void
-  updatePreferences: (preferences: Partial<User["preferences"]>) => void
-  updateProfile: (profile: Partial<User>) => void
-  updatePassword: (currentPassword: string, newPassword: string) => void
-}>({
+const UserContext = createContext<UserContextType>({
   user: null,
   isLoading: true,
-  login: async () => false,
-  logout: () => {},
-  updateUser: () => {},
-  updatePreferences: () => {},
-  updateProfile: () => {},
-  updatePassword: () => {},
-})
+  error: null,
+  isAuthenticated: false,
+  login: async () => ({ success: false, error: new Error('Not implemented') }),
+  logout: async () => ({ success: false, error: new Error('Not implemented') }),
+  signup: async () => ({ success: false, error: new Error('Not implemented') })
+});
 
 // Provider component
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
-  // Simulate loading user data
+  // Check if the user is authenticated
   useEffect(() => {
-    // In a real app, this would be an API call to check authentication
     const checkAuth = async () => {
       try {
-        // Simulate API delay
-        await new Promise((resolve) => setTimeout(resolve, 500))
-
-        // Check if user is logged in (using localStorage in this demo)
-        const savedUser = localStorage.getItem("habitTrackerUser")
-        if (savedUser) {
-          setUser(JSON.parse(savedUser))
+        setIsLoading(true);
+        
+        // In a real app, we would check for a token in localStorage and validate it with the API
+        // const token = localStorage.getItem('auth_token')
+        // if (token) {
+        //   const response = await fetch('/api/auth/me', {
+        //     headers: { Authorization: `Bearer ${token}` }
+        //   })
+        //   if (response.ok) {
+        //     const userData = await response.json()
+        //     setUser(userData)
+        //   } else {
+        //     localStorage.removeItem('auth_token')
+        //     setUser(null)
+        //   }
+        // }
+        
+        // For development, use mock user
+        if (process.env.NEXT_PUBLIC_DEBUG === 'true') {
+          // Simulate API delay
+          await new Promise(resolve => setTimeout(resolve, 500));
+          setUser(defaultUser);
         } else {
-          // Don't automatically create a default user
-          // This ensures authentication is required
-          setUser(null)
+          setUser(null);
         }
-      } catch (error) {
-        console.error("Authentication error:", error)
+        
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error('Authentication check failed'));
+        setUser(null);
       } finally {
-        setIsLoading(false)
+        setIsLoading(false);
       }
-    }
-
-    checkAuth()
-  }, [])
+    };
+    
+    checkAuth();
+  }, []);
 
   // Login function
   const login = async (email: string, password: string) => {
-    setIsLoading(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 800))
-
-      // In a real app, validate credentials with backend
-      // For demo, just check if email contains "@"
-      if (email.includes("@")) {
-        const loggedInUser = {
-          ...defaultUser,
-          email,
-        }
-        setUser(loggedInUser)
-        localStorage.setItem("habitTrackerUser", JSON.stringify(loggedInUser))
-        return true
+      setIsLoading(true);
+      
+      // In a real app, we would call the API to authenticate
+      // const response = await fetch('/api/auth/login', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ email, password })
+      // })
+      
+      // if (response.ok) {
+      //   const data = await response.json()
+      //   localStorage.setItem('auth_token', data.token)
+      //   setUser(data.user)
+      //   return { success: true, error: null }
+      // } else {
+      //   const errorData = await response.json()
+      //   throw new Error(errorData.message || 'Login failed')
+      // }
+      
+      // For development, simulate login with mock user
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      if (email === 'demo@example.com' && password === 'password') {
+        setUser(defaultUser);
+        return { success: true, error: null };
+      } else {
+        throw new Error('Invalid email or password');
       }
-      return false
-    } catch (error) {
-      console.error("Login error:", error)
-      return false
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Login failed'));
+      return { 
+        success: false, 
+        error: err instanceof Error ? err : new Error('Login failed') 
+      };
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
   // Logout function
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem("habitTrackerUser")
-  }
-
-  // Update user data
-  const updateUser = (userData: Partial<User>) => {
-    if (!user) return
-
-    const updatedUser = {
-      ...user,
-      ...userData,
+  const logout = async () => {
+    try {
+      setIsLoading(true);
+      
+      // In a real app, we would call the API to logout
+      // const response = await fetch('/api/auth/logout', {
+      //   method: 'POST'
+      // })
+      
+      // if (response.ok) {
+      //   localStorage.removeItem('auth_token')
+      //   setUser(null)
+      // } else {
+      //   const errorData = await response.json()
+      //   throw new Error(errorData.message || 'Logout failed')
+      // }
+      
+      // For development, simulate logout
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setUser(null);
+      
+      return { success: true, error: null };
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Logout failed'));
+      return { 
+        success: false, 
+        error: err instanceof Error ? err : new Error('Logout failed') 
+      };
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    setUser(updatedUser)
-    localStorage.setItem("habitTrackerUser", JSON.stringify(updatedUser))
-  }
-
-  // Update user preferences
-  const updatePreferences = (preferences: Partial<User["preferences"]>) => {
-    if (!user) return
-
-    const updatedUser = {
-      ...user,
-      preferences: {
-        ...user.preferences,
-        ...preferences,
-      },
+  // Signup function
+  const signup = async (name: string, email: string, password: string) => {
+    try {
+      setIsLoading(true);
+      
+      // In a real app, we would call the API to sign up
+      // const response = await fetch('/api/auth/signup', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ name, email, password })
+      // })
+      
+      // if (response.ok) {
+      //   const data = await response.json()
+      //   localStorage.setItem('auth_token', data.token)
+      //   setUser(data.user)
+      //   return { success: true, error: null }
+      // } else {
+      //   const errorData = await response.json()
+      //   throw new Error(errorData.message || 'Signup failed')
+      // }
+      
+      // For development, simulate signup with mock user
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const newUser: User = {
+        ...defaultUser,
+        name,
+        email,
+        id: `user_${Date.now()}`,
+      };
+      
+      setUser(newUser);
+      return { success: true, error: null };
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Signup failed'));
+      return { 
+        success: false, 
+        error: err instanceof Error ? err : new Error('Signup failed') 
+      };
+    } finally {
+      setIsLoading(false);
     }
-
-    setUser(updatedUser)
-    localStorage.setItem("habitTrackerUser", JSON.stringify(updatedUser))
-  }
-
-  // Update user profile
-  const updateProfile = (profile: Partial<User>) => {
-    if (!user) return
-    
-    // This is basically the same as updateUser but specifically for profile fields
-    const updatedUser = {
-      ...user,
-      ...profile,
-    }
-    
-    setUser(updatedUser)
-    localStorage.setItem("habitTrackerUser", JSON.stringify(updatedUser))
-    console.log("Profile updated:", profile)
-  }
-  
-  // Update password
-  const updatePassword = (currentPassword: string, newPassword: string) => {
-    // In a real app, this would validate the current password and update it in the backend
-    // For demo purposes, we'll just log it
-    console.log("Password updated from", currentPassword, "to", newPassword)
-  }
+  };
 
   return (
-    <UserContext.Provider 
-      value={{ 
-        user, 
-        isLoading, 
-        login, 
-        logout, 
-        updateUser, 
-        updatePreferences,
-        updateProfile,
-        updatePassword
-      }}
-    >
+    <UserContext.Provider value={{ 
+      user, 
+      isLoading, 
+      error, 
+      isAuthenticated: !!user,
+      login,
+      logout,
+      signup
+    }}>
       {children}
     </UserContext.Provider>
-  )
+  );
 }
 
-// Hook to use the user context
+// Hook to use the auth context
 export function useUser() {
-  const context = useContext(UserContext)
+  const context = useContext(UserContext);
   if (context === undefined) {
-    throw new Error("useUser must be used within a UserProvider")
+    throw new Error('useUser must be used within a UserProvider');
   }
-  return context
+  return context;
 }
 

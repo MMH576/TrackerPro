@@ -4,6 +4,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type React from "react"
+import { CustomHeader } from "@/components/custom-header"
+import { Toaster } from "@/components/ui/toaster"
 
 export default function DashboardLayout({
   children,
@@ -37,12 +39,14 @@ export default function DashboardLayout({
   if (!user) return null;
 
   return (
-    <div className="relative min-h-screen bg-background">
-      <div className="container mx-auto max-w-6xl">
+    <div className="relative min-h-screen bg-background flex flex-col">
+      <CustomHeader />
+      <div className="container mx-auto max-w-6xl flex-1">
         <main className="p-4">
           {children}
         </main>
       </div>
+      <Toaster />
     </div>
   )
 }

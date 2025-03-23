@@ -172,10 +172,10 @@ export function HeatmapChart({
   const getColorForValue = (value: number) => {
     if (value < 0) return 'transparent' // Empty cell
     if (value === 0) return 'bg-gray-200 dark:bg-gray-800' // Empty (no activity)
-    if (value === 1) return 'bg-emerald-200 dark:bg-emerald-900' // Low activity
-    if (value === 2) return 'bg-emerald-300 dark:bg-emerald-700' // Medium activity
-    if (value === 3) return 'bg-emerald-400 dark:bg-emerald-600' // High activity
-    return 'bg-emerald-500' // Very high activity (4+)
+    if (value === 1) return 'bg-emerald-200 dark:bg-emerald-900' // 1 habit
+    if (value === 2) return 'bg-emerald-300 dark:bg-emerald-700' // 2 habits
+    if (value === 3) return 'bg-emerald-400 dark:bg-emerald-600' // 3 habits
+    return 'bg-emerald-500' // 4+ habits
   }
   
   // Format tooltip text with proper pluralization
@@ -186,6 +186,7 @@ export function HeatmapChart({
       day: 'numeric'
     });
     
+    // Use exact habit count
     const habitText = value === 1
       ? '1 habit completed'
       : value > 0 
@@ -252,10 +253,7 @@ export function HeatmapChart({
                       ></div>
                     </TooltipTrigger>
                     {day.date && (
-                      <TooltipContent 
-                        side="top" 
-                        className="bg-black text-white border-none rounded px-3 py-2 font-medium text-xs"
-                      >
+                      <TooltipContent side="top" className="text-xs p-2">
                         {formatTooltipText(day.date, day.value)}
                       </TooltipContent>
                     )}
