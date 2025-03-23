@@ -26,11 +26,6 @@ export function MainNav({ className }: MainNavProps) {
       icon: Plus,
     },
     {
-      name: "Progress",
-      href: "/dashboard/progress",
-      icon: BarChart,
-    },
-    {
       name: "Profile",
       href: "/dashboard/profile",
       icon: User,

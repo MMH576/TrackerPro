@@ -25,12 +25,6 @@ export function MobileNav({ className }: MobileNavProps) {
       href: "/dashboard"
     },
     {
-      id: "progress",
-      label: "Progress",
-      icon: BarChart,
-      href: "/dashboard/progress"
-    },
-    {
       id: "profile",
       label: "Profile",
       icon: User,

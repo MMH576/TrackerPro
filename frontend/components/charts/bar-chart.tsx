@@ -7,9 +7,15 @@ interface BarChartProps {
   data: { name: string; value: number }[]
   height: number
   color?: string
+  showValues?: boolean
 }
 
-export function BarChart({ data, height, color = "hsl(var(--primary))" }: BarChartProps) {
+export function BarChart({ 
+  data, 
+  height, 
+  color = "hsl(var(--primary))", 
+  showValues = false
+}: BarChartProps) {
   const maxValue = Math.max(...data.map((item) => item.value), 1)
   const chartRef = useRef<HTMLDivElement>(null)
 
@@ -47,37 +53,33 @@ export function BarChart({ data, height, color = "hsl(var(--primary))" }: BarCha
   }, [data])
 
   return (
-    <div className="w-full h-full flex flex-col" style={{ height }}>
-      <div className="flex-1 flex items-end justify-between gap-2 px-2" ref={chartRef}>
-        {data.map((item, index) => {
-          const percentage = (item.value / maxValue) * 100
-
-          return (
-            <div key={index} className="relative flex-1 flex flex-col justify-end group bar">
-              <motion.div
-                className="w-full rounded-t-md"
-                style={{
-                  backgroundColor: color,
-                  opacity: 0.8,
-                }}
-                initial={{ height: 0 }}
-                animate={{ height: `${percentage}%` }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-              />
-              <div className="tooltip absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-background border px-2 py-1 rounded text-xs opacity-0 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                {item.name}: {item.value}
-              </div>
+    <div className="w-full h-full space-y-2" style={{ height }}>
+      {data.map((item, index) => {
+        const value = Math.max(0, item.value)
+        const percentage = value / maxValue
+        
+        return (
+          <div key={index} className="flex flex-col space-y-1">
+            <div className="flex justify-between items-center text-xs">
+              <span className="font-medium truncate" style={{ maxWidth: '60%' }}>
+                {item.name}
+              </span>
+              {showValues && (
+                <span className="text-muted-foreground">{value}%</span>
+              )}
             </div>
-          )
-        })}
-      </div>
-      <div className="h-6 mt-2 flex justify-between px-2">
-        {data.map((item, index) => (
-          <div key={index} className="text-xs text-muted-foreground truncate text-center flex-1">
-            {item.name}
+            <div className="w-full bg-secondary rounded-full overflow-hidden h-2">
+              <motion.div
+                className="bg-primary h-full rounded-full"
+                style={{ width: `${percentage * 100}%` }}
+                initial={{ width: 0 }}
+                animate={{ width: `${percentage * 100}%` }}
+                transition={{ duration: 0.7, ease: "easeOut" }}
+              />
+            </div>
           </div>
-        ))}
-      </div>
+        )
+      })}
     </div>
   )
 }

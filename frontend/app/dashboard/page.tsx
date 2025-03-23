@@ -366,18 +366,14 @@ export default function Dashboard() {
             )}
           </TabsContent>
 
-          <TabsContent value="progress" className="mt-0 space-y-4">
-            <DashboardAnalytics />
-            
-            <div className="mt-6">
-              <Button 
-                onClick={() => router.push('/dashboard/progress')}
-                variant="outline"
-                className="w-full"
-              >
-                View Detailed Analytics
-              </Button>
+          <TabsContent value="progress" className="space-y-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+              <div>
+                <h1 className="text-3xl font-bold">Progress Insights</h1>
+                <p className="text-muted-foreground">Track your habit completion over time</p>
+              </div>
             </div>
+            <DashboardAnalytics habits={habits} />
           </TabsContent>
 
           <TabsContent value="social">
