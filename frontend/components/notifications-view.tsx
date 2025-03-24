@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,26 +9,60 @@ import { Badge } from "@/components/ui/badge"
 import { Bell, Calendar, Check, Clock, Settings, Trophy, Users } from "lucide-react"
 import type { Notification } from "@/lib/types"
 import { motion } from "framer-motion"
+import { useNotificationStore, NotificationData } from "@/lib/stores/notification-store"
+import { supabase } from "@/lib/supabase"
 
 interface NotificationsViewProps {
-  notifications: Notification[]
-  onMarkAsRead: (id: string) => void
-  onMarkAllAsRead: () => void
-  onDeleteNotification: (id: string) => void
+  onDeleteNotification?: (id: string) => void;
 }
 
-export function NotificationsView({
-  notifications,
-  onMarkAsRead,
-  onMarkAllAsRead,
-  onDeleteNotification,
-}: NotificationsViewProps) {
+export function NotificationsView({ onDeleteNotification }: NotificationsViewProps) {
   const [activeTab, setActiveTab] = useState("all")
+  const { 
+    notifications, 
+    unreadCount, 
+    markAsRead, 
+    markAllAsRead, 
+    deleteNotification, 
+    fetchNotifications 
+  } = useNotificationStore();
+
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        fetchNotifications(data.user.id);
+      }
+    };
+    
+    getCurrentUser();
+  }, [fetchNotifications]);
+
+  // Handler for when a notification is marked as read
+  const handleMarkAsRead = (id: string) => {
+    markAsRead(id);
+  }
+
+  // Handler for when all notifications are marked as read
+  const handleMarkAllAsRead = async () => {
+    const { data } = await supabase.auth.getUser();
+    if (data.user) {
+      markAllAsRead(data.user.id);
+    }
+  }
+
+  // Handler for when a notification is deleted
+  const handleDeleteNotification = (id: string) => {
+    deleteNotification(id);
+    if (onDeleteNotification) {
+      onDeleteNotification(id);
+    }
+  }
 
   const getFilteredNotifications = () => {
     switch (activeTab) {
       case "unread":
-        return notifications.filter((n) => n.unread)
+        return notifications.filter((n) => !n.isRead)
       case "reminders":
         return notifications.filter((n) => n.type === "reminder")
       case "social":
@@ -38,12 +72,8 @@ export function NotificationsView({
     }
   }
 
-  const getUnreadCount = () => {
-    return notifications.filter((n) => n.unread).length
-  }
-
   const groupNotificationsByDate = () => {
-    const groups: Record<string, Notification[]> = {
+    const groups: Record<string, NotificationData[]> = {
       Today: [],
       Yesterday: [],
       "This Week": [],
@@ -60,7 +90,7 @@ export function NotificationsView({
     const yesterdayStr = yesterday.toDateString()
 
     getFilteredNotifications().forEach((notification) => {
-      const notifDate = new Date(notification.timestamp)
+      const notifDate = new Date(notification.createdAt)
       const notifDateStr = notifDate.toDateString()
 
       if (notifDateStr === todayStr) {
@@ -78,11 +108,7 @@ export function NotificationsView({
     return Object.entries(groups).filter(([_, notifications]) => notifications.length > 0)
   }
 
-  const handleMarkAsRead = (id: string) => {
-    onMarkAsRead(id)
-  }
-
-  const getNotificationIcon = (notification: Notification) => {
+  const getNotificationIcon = (notification: NotificationData) => {
     switch (notification.type) {
       case "reminder":
         return <Bell className="h-5 w-5" />
@@ -99,7 +125,7 @@ export function NotificationsView({
     }
   }
 
-  const getNotificationColor = (notification: Notification) => {
+  const getNotificationColor = (notification: NotificationData) => {
     switch (notification.type) {
       case "reminder":
         return "bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300"
@@ -116,8 +142,12 @@ export function NotificationsView({
     }
   }
 
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
   const groupedNotifications = groupNotificationsByDate()
-  const unreadCount = getUnreadCount()
 
   return (
     <div className="space-y-6">
@@ -128,7 +158,7 @@ export function NotificationsView({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={onMarkAllAsRead} disabled={unreadCount === 0}>
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleMarkAllAsRead} disabled={unreadCount === 0}>
             <Check className="h-4 w-4" />
             Mark All as Read
           </Button>
@@ -139,45 +169,38 @@ export function NotificationsView({
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="flex overflow-x-auto pb-px">
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="unread">
-            Unread
-            {unreadCount > 0 && (
-              <Badge className="ml-2 bg-primary text-primary-foreground" variant="default">
-                {unreadCount}
-              </Badge>
-            )}
+      <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="all" className="relative">
+            All
+            {unreadCount > 0 && <Badge className="ml-2 bg-primary text-primary-foreground">{unreadCount}</Badge>}
           </TabsTrigger>
+          <TabsTrigger value="unread">Unread</TabsTrigger>
           <TabsTrigger value="reminders">Reminders</TabsTrigger>
           <TabsTrigger value="social">Social</TabsTrigger>
         </TabsList>
 
-        {getFilteredNotifications().length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="text-4xl mb-4">🔔</div>
-            <h3 className="text-xl font-medium mb-2">No notifications</h3>
-            <p className="text-muted-foreground mb-6 max-w-md">
-              {activeTab === "all"
-                ? "You don't have any notifications yet."
-                : activeTab === "unread"
-                  ? "You don't have any unread notifications."
-                  : activeTab === "reminders"
-                    ? "You don't have any reminder notifications."
-                    : "You don't have any social notifications."}
-            </p>
-          </div>
+        {groupedNotifications.length === 0 ? (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center justify-center text-center p-4 gap-2">
+                <Bell className="h-12 w-12 text-muted-foreground" />
+                <h3 className="text-lg font-medium">No notifications</h3>
+                <p className="text-sm text-muted-foreground">You don't have any notifications yet.</p>
+              </div>
+            </CardContent>
+          </Card>
         ) : (
           groupedNotifications.map(([date, notifications]) => (
             <motion.div
               key={date}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
             >
               <Card>
-                <CardHeader>
+                <CardHeader className="pb-3">
                   <CardTitle>{date}</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -185,36 +208,34 @@ export function NotificationsView({
                     {notifications.map((notification) => (
                       <div
                         key={notification.id}
-                        className={`flex items-start gap-4 p-4 ${notification.unread ? "bg-muted/50" : ""}`}
-                        onClick={() => handleMarkAsRead(notification.id)}
+                        className={`flex items-start gap-4 p-4 ${!notification.isRead ? "bg-muted/50" : ""}`}
+                        onClick={() => !notification.isRead && handleMarkAsRead(notification.id)}
                       >
-                        {"avatar" in notification ? (
+                        {notification.metadata?.avatar ? (
                           <Avatar className="h-10 w-10 border">
-                            <AvatarImage src={notification.avatar} alt={notification.name} />
-                            <AvatarFallback>{notification.name.charAt(0)}</AvatarFallback>
+                            <AvatarImage src={notification.metadata.avatar} alt={notification.metadata.name || ''} />
+                            <AvatarFallback>{notification.metadata.name?.charAt(0) || '?'}</AvatarFallback>
                           </Avatar>
                         ) : (
-                          <div
-                            className={`flex h-10 w-10 items-center justify-center rounded-full ${getNotificationColor(notification)}`}
-                          >
+                          <div className={`flex h-10 w-10 items-center justify-center rounded-full ${getNotificationColor(notification)}`}>
                             {getNotificationIcon(notification)}
                           </div>
                         )}
                         <div className="flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <div>
-                              {"name" in notification ? (
-                                <p className={`font-medium ${notification.unread ? "" : "text-muted-foreground"}`}>
-                                  <span className="font-semibold">{notification.name}</span> {notification.message}
+                              {notification.metadata?.name ? (
+                                <p className={`font-medium ${!notification.isRead ? "" : "text-muted-foreground"}`}>
+                                  <span className="font-semibold">{notification.metadata.name}</span> {notification.message}
                                 </p>
                               ) : (
-                                <p className={`font-medium ${notification.unread ? "" : "text-muted-foreground"}`}>
+                                <p className={`font-medium ${!notification.isRead ? "" : "text-muted-foreground"}`}>
                                   {notification.message}
                                 </p>
                               )}
-                              <p className="text-sm text-muted-foreground">{notification.time}</p>
+                              <p className="text-sm text-muted-foreground">{formatTime(notification.createdAt)}</p>
                             </div>
-                            {notification.unread && <Badge variant="default" className="rounded-full h-2 w-2 p-0" />}
+                            {!notification.isRead && <Badge variant="default" className="rounded-full h-2 w-2 p-0" />}
                           </div>
                         </div>
                       </div>

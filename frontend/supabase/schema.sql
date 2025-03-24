@@ -39,12 +39,26 @@ CREATE TABLE IF NOT EXISTS public.habit_logs (
   UNIQUE (habit_id, completed_date) -- prevent duplicate entries for same habit/day
 );
 
--- Create realtime publication
+-- Create notifications table
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES public.profiles (id) ON DELETE CASCADE NOT NULL,
+  message TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('reminder', 'achievement', 'social', 'streak', 'system', 'friend')),
+  related_id TEXT, -- ID of the related item (habit_id, challenge_id, etc)
+  is_read BOOLEAN DEFAULT false NOT NULL,
+  metadata JSONB, -- Additional data like name, avatar, etc
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL
+);
+
+-- Update realtime publication to include notifications
 DROP PUBLICATION IF EXISTS supabase_realtime;
 CREATE PUBLICATION supabase_realtime FOR TABLE 
   public.profiles,
   public.habits,
-  public.habit_logs;
+  public.habit_logs,
+  public.notifications;
 
 -- Set up Row Level Security (RLS) policies
 
@@ -114,6 +128,27 @@ CREATE POLICY "Users can update their own habit logs"
 
 CREATE POLICY "Users can delete their own habit logs" 
   ON public.habit_logs FOR DELETE 
+  USING (auth.uid() = user_id);
+
+-- Notifications RLS
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if you want to recreate them
+DROP POLICY IF EXISTS "Users can view their own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can update their own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can delete their own notifications" ON public.notifications;
+
+-- Create policies
+CREATE POLICY "Users can view their own notifications" 
+  ON public.notifications FOR SELECT 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own notifications" 
+  ON public.notifications FOR UPDATE 
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own notifications" 
+  ON public.notifications FOR DELETE 
   USING (auth.uid() = user_id);
 
 -- Create trigger to create profile record when user signs up

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { Bell, LogOut, Settings, User } from "lucide-react";
+import { LogOut, Settings, User } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { NotificationButton } from "@/components/notification-button";
 
 export function CustomHeader() {
   const { user, signOut } = useAuth();
@@ -26,10 +27,6 @@ export function CustomHeader() {
     } catch (error) {
       console.error("Error signing out:", error);
     }
-  };
-
-  const handleNotificationClick = () => {
-    router.push("/dashboard/notifications");
   };
 
   // Get user initial for avatar fallback
@@ -55,16 +52,7 @@ export function CustomHeader() {
         </Link>
         
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative rounded-full h-9 w-9"
-            onClick={handleNotificationClick}
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
-            <span className="sr-only">Notifications</span>
-          </Button>
+          <NotificationButton />
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

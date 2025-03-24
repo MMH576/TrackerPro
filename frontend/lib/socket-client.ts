@@ -42,6 +42,14 @@ export interface FriendRequestRejectedData {
   targetId: string;
 }
 
+export interface NotificationData {
+  userId: string;
+  message: string;
+  type: 'reminder' | 'achievement' | 'social' | 'streak' | 'system' | 'friend';
+  relatedId?: string;
+  metadata?: any;
+}
+
 // Declare the global window interface to add socketCallbacks
 declare global {
   interface Window {
@@ -112,7 +120,7 @@ export class SocketClient {
       socket = mockSocket;
     } else {
       // Connect to real socket server in production
-      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
       socket = io(socketUrl, {
         query: { userId },
         autoConnect: true,
@@ -122,7 +130,7 @@ export class SocketClient {
       });
       
       socket.on('connect', () => {
-        console.log('Socket connected', socket.id);
+        console.log('Socket connected to', socketUrl, 'with ID:', socket.id);
       });
       
       socket.on('disconnect', () => {
@@ -246,6 +254,25 @@ export class SocketClient {
   public onFriendRequestRejected(callback: (data: FriendRequestRejectedData) => void): void {
     const socket = this.ensureConnected();
     socket.on('friendRequestRejected', callback);
+  }
+  
+  // Get all active sockets (for notification system)
+  public getAllSockets(): Socket[] {
+    return Array.from(this.sockets.values());
+  }
+  
+  // Notification Events
+  
+  // Emit notification event
+  public emitNotification(data: NotificationData): void {
+    const socket = this.ensureConnected();
+    socket.emit('notification', data);
+  }
+  
+  // Listen for notification event
+  public onNotification(callback: (data: NotificationData) => void): void {
+    const socket = this.ensureConnected();
+    socket.on('notification', callback);
   }
 }
 

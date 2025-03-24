@@ -4,7 +4,7 @@ import { Inter } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
 import { UserProvider } from '@/hooks/use-user'
 import { AuthProvider } from '@/lib/auth-context'
-import { CustomHeader } from '@/components/custom-header'
+import { NotificationProvider } from '@/components/notification-provider'
 import { Toaster } from '@/components/ui/toaster'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -29,7 +29,9 @@ export default function RootLayout({
         >
           <AuthProvider>
             <UserProvider>
-              {children}
+              <NotificationProvider>
+                {children}
+              </NotificationProvider>
             </UserProvider>
           </AuthProvider>
         </ThemeProvider>
