@@ -16,6 +16,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { NotificationButton } from "@/components/notification-button";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export function CustomHeader() {
   const { user, signOut } = useAuth();
@@ -52,6 +53,7 @@ export function CustomHeader() {
         </Link>
         
         <div className="flex items-center gap-4">
+          <ThemeToggle />
           <NotificationButton />
           
           <DropdownMenu>

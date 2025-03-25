@@ -1,0 +1,186 @@
+/**
+ * Theme utility CSS for ensuring proper theme application
+ * across the application with both daisyUI and Shadcn components
+ */
+
+/* Define CSS variable mapping between DaisyUI and Shadcn */
+[data-theme="light"] {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 221 83% 58%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 346 84% 61%;
+  --secondary-foreground: 355 100% 97%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 142 71% 70%;
+  --accent-foreground: 142 100% 10%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 221 83% 58%;
+  --radius: 0.5rem;
+}
+
+[data-theme="dark"] {
+  --background: 222 47% 11%;
+  --foreground: 213 31% 91%;
+  --card: 222 47% 11%;
+  --card-foreground: 213 31% 91%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 213 31% 91%;
+  --primary: 263 75% 50%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 323 79% 50%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 33% 18%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 168 67% 45%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 33% 20%;
+  --input: 217 33% 20%;
+  --ring: 263 75% 50%;
+  --radius: 0.5rem;
+}
+
+[data-theme="cupcake"] {
+  --background: 0 0% 98%;
+  --foreground: 323 21% 18%;
+  --card: 0 0% 98%;
+  --card-foreground: 323 21% 18%;
+  --popover: 0 0% 98%;
+  --popover-foreground: 323 21% 18%;
+  --primary: 183 47% 59%;
+  --primary-foreground: 324 71% 90%;
+  --secondary: 343 79% 79%;
+  --secondary-foreground: 355 100% 97%;
+  --muted: 283 25% 95%;
+  --muted-foreground: 215 16% 47%;
+  --accent: 43 74% 58%;
+  --accent-foreground: 323 21% 18%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 275 25% 88%;
+  --input: 275 25% 88%;
+  --ring: 183 47% 59%;
+  --radius: 0.5rem;
+}
+
+[data-theme="synthwave"] {
+  --background: 249 37% 19%;
+  --foreground: 274 73% 98%;
+  --card: 249 37% 19%;
+  --card-foreground: 274 73% 98%;
+  --popover: 249 37% 19%;
+  --popover-foreground: 274 73% 98%;
+  --primary: 326 100% 70%;
+  --primary-foreground: 249 37% 19%;
+  --secondary: 198 80% 65%;
+  --secondary-foreground: 249 37% 19%;
+  --muted: 249 37% 25%;
+  --muted-foreground: 274 37% 87%;
+  --accent: 249 37% 39%;
+  --accent-foreground: 274 73% 98%;
+  --destructive: 0 63% 31%;
+  --destructive-foreground: 274 73% 98%;
+  --border: 249 37% 39%;
+  --input: 249 37% 39%;
+  --ring: 326 100% 70%;
+  --radius: 0.5rem;
+}
+
+[data-theme="corporate"] {
+  --background: 0 0% 100%;
+  --foreground: 229 35% 17%;
+  --card: 0 0% 100%;
+  --card-foreground: 229 35% 17%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 229 35% 17%;
+  --primary: 229 75% 61%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 224 9% 85%; 
+  --secondary-foreground: 229 35% 17%;
+  --muted: 224 9% 95%;
+  --muted-foreground: 229 11% 45%;
+  --accent: 168 67% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 224 9% 85%;
+  --input: 224 9% 85%;
+  --ring: 229 75% 61%;
+  --radius: 0.5rem;
+}
+
+/* Additional common overrides to improve compatibility */
+[data-theme] {
+  /* Force consistent radii between libs */
+  --rounded-box: var(--radius);
+  --rounded-btn: calc(var(--radius) - 2px);
+  --rounded-badge: calc(var(--radius) - 4px);
+  
+  /* Better default focus ring */
+  --ring-color: hsl(var(--ring));
+  --ring-width: 2px;
+  --ring-offset-width: 1px;
+}
+
+/* DaisyUI to Shadcn UI mappings for contrast */
+[data-theme] {
+  --primary-focus: hsl(var(--primary));
+  --btn-text-case: none;
+  --b1: var(--background);
+  --bc: var(--foreground);
+  --pc: var(--primary-foreground);
+  --sc: var(--secondary-foreground);
+  --ac: var(--accent-foreground);
+  --nc: var(--muted-foreground);
+  --btn-focus-scale: 0.98;
+}
+
+/* Smooth transitions for theme changes */
+*, ::before, ::after {
+  transition: background-color 0.3s ease, 
+              color 0.3s ease, 
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* Button specific transitions */
+button, a {
+  transition: background-color 0.3s ease, 
+              color 0.3s ease, 
+              border-color 0.3s ease, 
+              box-shadow 0.3s ease,
+              transform 0.2s ease;
+}
+
+/* Theme previews */
+[data-theme-preview] {
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+}
+
+/* Hide scrollbars in theme selectors */
+.theme-scroll {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.theme-scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari */
+}
+
+/* Improved selected state for theme toggles */
+.theme-option-selected {
+  box-shadow: 0 0 0 2px hsl(var(--primary)) !important;
+  border-color: hsl(var(--primary)) !important;
+} 

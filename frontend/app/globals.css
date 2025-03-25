@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import theme utilities */
+@import "../styles/theme-utils.css";
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -47,14 +50,125 @@
     --input: 217.2 32.6% 17.5%;
     --ring: 224.3 76.3% 48%;
   }
-}
 
-@layer base {
   * {
     @apply border-border;
   }
+  
+  html,
+  body {
+    height: 100%;
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+  
+  /* Ensure smooth theme transitions */
+  html {
+    transition: 
+      background-color 0.3s ease,
+      color 0.3s ease,
+      border-color 0.3s ease;
+  }
+  
   body {
     @apply bg-background text-foreground;
+    min-height: 100vh;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Force scrollbar to avoid layout shifts during theme changes */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted)) transparent;
+  }
+  
+  /* Webkit scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted));
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground));
+  }
+  
+  /* Mobile tap highlight color */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Used to fade content when loading or transitioning */
+  .fade-in {
+    animation: fadeIn 0.3s ease forwards;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  /* Overrides for consistent form elements */
+  input, textarea, select, button {
+    font-family: inherit;
+  }
+  
+  /* Ensure theme transitions for all important elements */
+  a, button, input, select, textarea {
+    transition: 
+      background-color 0.3s ease,
+      color 0.3s ease,
+      border-color 0.3s ease,
+      box-shadow 0.3s ease,
+      opacity 0.3s ease;
+  }
+}
+
+/* Utilities for theme toggle, etc. */
+@layer utilities {
+  .theme-transition {
+    transition: 
+      background-color 0.3s ease,
+      color 0.3s ease,
+      border-color 0.3s ease,
+      opacity 0.3s ease;
+  }
+  
+  .theme-no-transition {
+    transition: none !important;
+  }
+  
+  .theme-preview-card {
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .modal-backdrop {
+    @apply fixed inset-0 bg-background/80 backdrop-blur-sm z-50;
   }
 }
 

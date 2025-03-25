@@ -13,9 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Bell, Calendar, Cloud, Lock, Moon, Shield, Sun, User } from "lucide-react"
-import { useTheme } from "next-themes"
 import { motion } from "framer-motion"
 import type { User as UserType } from "@/lib/types"
+import { ThemeSelector } from "@/components/theme-selector"
 
 interface SettingsViewProps {
   user: UserType
@@ -25,7 +25,6 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({ user, onUpdatePreferences, onUpdateProfile, onUpdatePassword }: SettingsViewProps) {
-  const { theme, setTheme } = useTheme()
   const [activeTab, setActiveTab] = useState("preferences")
 
   // Form states
@@ -101,36 +100,7 @@ export function SettingsView({ user, onUpdatePreferences, onUpdateProfile, onUpd
                 <CardDescription>Customize how Habit Tracker Pro looks</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Theme</Label>
-                  <div className="flex items-center space-x-4">
-                    <Button
-                      variant={theme === "light" ? "default" : "outline"}
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => setTheme("light")}
-                    >
-                      <Sun className="h-4 w-4" />
-                      Light
-                    </Button>
-                    <Button
-                      variant={theme === "dark" ? "default" : "outline"}
-                      size="sm"
-                      className="gap-2"
-                      onClick={() => setTheme("dark")}
-                    >
-                      <Moon className="h-4 w-4" />
-                      Dark
-                    </Button>
-                    <Button
-                      variant={theme === "system" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setTheme("system")}
-                    >
-                      System
-                    </Button>
-                  </div>
-                </div>
+                <ThemeSelector />
 
                 <Separator />
 
@@ -291,18 +261,6 @@ export function SettingsView({ user, onUpdatePreferences, onUpdateProfile, onUpd
                     id="achievement-alerts"
                     checked={user.preferences.achievementAlerts}
                     onCheckedChange={(checked) => onUpdatePreferences({ achievementAlerts: checked })}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="friend-alerts">Friend Activity</Label>
-                    <p className="text-sm text-muted-foreground">Get notified about friend challenges and activities</p>
-                  </div>
-                  <Switch
-                    id="friend-alerts"
-                    checked={user.preferences.friendAlerts}
-                    onCheckedChange={(checked) => onUpdatePreferences({ friendAlerts: checked })}
                   />
                 </div>
 

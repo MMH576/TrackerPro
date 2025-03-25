@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/components/ui/use-toast"
 import { useState } from "react"
+import { ThemeToggle } from "@/components/ThemeToggle"
 
 export function Header() {
   const router = useRouter()
@@ -60,6 +61,8 @@ export function Header() {
               <span className="font-bold hidden sm:inline-block">HabitHero</span>
             </Link>
           </div>
+          <div className="flex-1"></div>
+          <ThemeToggle />
         </div>
       </header>
     )
@@ -85,6 +88,7 @@ export function Header() {
         </div>
         <div className="flex-1"></div>
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Button variant="ghost" size="icon" className="relative" onClick={handleNotificationClick}>
             <Bell className="h-5 w-5" />
             <span className="sr-only">Notifications</span>
