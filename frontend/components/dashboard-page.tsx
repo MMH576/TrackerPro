@@ -4,14 +4,13 @@ import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { HabitDashboard } from "@/components/habit-dashboard"
 import { ProgressView } from "@/components/progress-view"
-import { SocialView } from "@/components/social-view"
 import { SettingsView } from "@/components/settings-view"
 import { Header } from "@/components/header"
 import { useTheme } from "next-themes"
 import { useToast } from "@/hooks/use-toast"
 import { MobileNav } from "@/components/mobile-nav"
-import type { Habit, User, Friend, Challenge } from "@/lib/types"
-import { initialHabits, mockFriends, mockChallenges } from "@/lib/mock-data"
+import type { Habit, User } from "@/lib/types"
+import { initialHabits } from "@/lib/mock-data"
 import { motion, AnimatePresence } from "framer-motion"
 
 export function DashboardPage() {
@@ -25,8 +24,6 @@ export function DashboardPage() {
   })
 
   const [activeTab, setActiveTab] = useState("habits")
-  const [friends, setFriends] = useState<Friend[]>(mockFriends)
-  const [challenges, setChallenges] = useState<Challenge[]>(mockChallenges)
   const [user, setUser] = useState<User>({
     id: "user1",
     name: "Alex Johnson",
@@ -41,7 +38,6 @@ export function DashboardPage() {
       animations: true,
       streakAlerts: true,
       achievementAlerts: true,
-      friendAlerts: true,
       defaultReminderTime: "08:00",
       defaultCategory: "health",
       publicProfile: true,
@@ -159,62 +155,6 @@ export function DashboardPage() {
     })
   }
 
-  // Join a challenge
-  const joinChallenge = (challengeId: string) => {
-    // Implementation would connect to backend
-    toast({
-      title: "Challenge joined!",
-      description: "You've successfully joined the challenge.",
-      duration: 3000,
-    })
-  }
-
-  // Leave a challenge
-  const leaveChallenge = (challengeId: string) => {
-    // Implementation would connect to backend
-    setChallenges(challenges.filter((c) => c.id !== challengeId))
-
-    toast({
-      title: "Challenge left",
-      description: "You've left the challenge.",
-      duration: 3000,
-    })
-  }
-
-  // Create a new challenge
-  const createChallenge = (challenge: Omit<Challenge, "id" | "participants" | "startDate" | "endDate">) => {
-    const newChallenge: Challenge = {
-      id: `challenge-${Date.now()}`,
-      participants: [
-        { id: "friend-1", progress: Math.floor(Math.random() * 10) },
-        { id: "friend-2", progress: Math.floor(Math.random() * 10) },
-      ],
-      startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
-      userProgress: 0,
-      totalDays: 30,
-      daysLeft: 30,
-      ...challenge,
-    }
-
-    setChallenges([...challenges, newChallenge])
-
-    toast({
-      title: "Challenge created!",
-      description: `Your "${challenge.name}" challenge has been created.`,
-      duration: 3000,
-    })
-  }
-
-  // Calculate streaks and progress for all habits
-  useEffect(() => {
-    const updatedHabits = habits.map((habit) => {
-      const { streak, progress } = calculateStreakAndProgress(habit)
-      return { ...habit, streak, progress }
-    })
-    setHabits(updatedHabits)
-  }, [habits.map((h) => h.completedDates.join(",")).join("|")])
-
   // Helper function to get today's date as string
   const getTodayString = () => {
     const today = new Date()
@@ -270,34 +210,32 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen flex flex-col">
       <Header user={user} />
+      <main className="flex-1 container mx-auto py-6 px-4 md:px-6">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.15 }}
+          >
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+              <div className="flex items-center justify-between">
+                <TabsList>
+                  <TabsTrigger value="habits">Habits</TabsTrigger>
+                  <TabsTrigger value="progress">Progress</TabsTrigger>
+                  <TabsTrigger value="settings">Settings</TabsTrigger>
+                </TabsList>
+              </div>
 
-      <main className="container mx-auto p-4 pt-6 pb-20 md:pb-6 max-w-6xl">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid grid-cols-4 w-full max-w-md mx-auto hidden md:grid">
-            <TabsTrigger value="habits">Habits</TabsTrigger>
-            <TabsTrigger value="progress">Progress</TabsTrigger>
-            <TabsTrigger value="social">Social</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
               <TabsContent value="habits" className="space-y-6">
                 <HabitDashboard
                   habits={habits}
-                  activeTab="all"
-                  setActiveTab={() => {}}
-                  onToggleCompletion={toggleHabitCompletion}
                   onAddHabit={addHabit}
-                  onDeleteHabit={deleteHabit}
+                  onToggleCompletion={toggleHabitCompletion}
+                  onDelete={deleteHabit}
                   onToggleFavorite={toggleFavorite}
                 />
               </TabsContent>
@@ -306,38 +244,18 @@ export function DashboardPage() {
                 <ProgressView habits={habits} />
               </TabsContent>
 
-              <TabsContent value="social" className="space-y-6">
-                <SocialView
-                  friends={friends}
-                  challenges={challenges}
-                  onJoinChallenge={joinChallenge}
-                  onLeaveChallenge={leaveChallenge}
-                  onCreateChallenge={createChallenge}
-                />
-              </TabsContent>
-
               <TabsContent value="settings" className="space-y-6">
                 <SettingsView
                   user={user}
                   onUpdatePreferences={updateUserPreferences}
                   onUpdateProfile={updateUserProfile}
-                  onUpdatePassword={() => {
-                    toast({
-                      title: "Password updated",
-                      description: "Your password has been changed successfully.",
-                      duration: 3000,
-                    })
-                  }}
                 />
               </TabsContent>
-            </motion.div>
-          </AnimatePresence>
-        </Tabs>
+            </Tabs>
+          </motion.div>
+        </AnimatePresence>
       </main>
-
-      <div className="fixed bottom-0 left-0 right-0 z-10 md:hidden border-t bg-background">
-        <MobileNav activeTab={activeTab} setActiveTab={setActiveTab} />
-      </div>
+      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>
   )
 }

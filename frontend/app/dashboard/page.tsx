@@ -9,7 +9,7 @@ import { HabitFilters } from "@/components/habit-filters";
 import { ProgressIndicator } from "@/components/progress-indicator";
 import { HabitCard } from "@/components/habit-card";
 import { DashboardAnalytics } from "@/components/dashboard-analytics";
-import { Plus, CalendarDays, UserPlus, Trophy } from "lucide-react";
+import { Plus, CalendarDays } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -18,13 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format, addDays, startOfWeek, eachDayOfInterval } from "date-fns";
 import { Habit } from "@/lib/types";
 import { motion } from "framer-motion";
-import { SocialChallengesView, Friend } from "@/components/social-challenges-view";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/use-toast";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Heart } from "lucide-react";
 
 export default function DashboardHome() {
   const { user, loading, isDevelopmentMode } = useAuth();
@@ -34,55 +28,6 @@ export default function DashboardHome() {
   const [activeTab, setActiveTab] = useState("habits");
   const [activeFilter, setActiveFilter] = useState("all");
   const [mainTab, setMainTab] = useState("today");
-  const [isAddFriendDialogOpen, setIsAddFriendDialogOpen] = useState(false);
-  const [friendEmail, setFriendEmail] = useState("");
-  const [socialSubTab, setSocialSubTab] = useState("friends");
-
-  // Mock friends data for social section
-  const mockFriends: Friend[] = [
-    {
-      id: "friend1",
-      name: "Jane Smith",
-      email: "jane@example.com",
-      avatar: "/placeholder.svg?height=40&width=40",
-      status: "online",
-      lastActive: new Date().toISOString()
-    },
-    {
-      id: "friend2",
-      name: "John Doe",
-      email: "john@example.com",
-      avatar: "/placeholder.svg?height=40&width=40",
-      status: "offline",
-      lastActive: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-    }
-  ];
-
-  // Mock challenges data
-  const mockChallenges = [
-    {
-      id: "challenge1",
-      name: "10,000 Steps Challenge",
-      description: "Walk 10,000 steps every day for a week",
-      type: "steps",
-      goal: 10000,
-      startDate: new Date(),
-      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      createdBy: "friend1",
-      participants: [
-        {
-          userId: "friend1",
-          progress: 8500,
-          joinedAt: new Date(Date.now() - 24 * 60 * 60 * 1000)
-        },
-        {
-          userId: user?.id || "user1",
-          progress: 6000,
-          joinedAt: new Date(Date.now() - 12 * 60 * 60 * 1000)
-        }
-      ]
-    }
-  ];
 
   if (loading) {
     return (
@@ -141,9 +86,6 @@ export default function DashboardHome() {
       case "creativity":
         filtered = habits.filter(habit => habit.category === "creativity");
         break;
-      case "social":
-        filtered = habits.filter(habit => habit.category === "social");
-        break;
       case "all":
       default:
         filtered = habits;
@@ -198,25 +140,17 @@ export default function DashboardHome() {
   const getHabitsByCategory = () => {
     const categories = [
       { id: "mindfulness", name: "Mindfulness", icon: "🧘", color: "bg-orange-500" },
+      { id: "health", name: "Health", icon: "💪", color: "bg-green-500" },
+      { id: "productivity", name: "Productivity", icon: "⚡", color: "bg-yellow-500" },
       { id: "learning", name: "Learning", icon: "📚", color: "bg-blue-500" },
-      { id: "health", name: "Health & Fitness", icon: "💪", color: "bg-green-500" },
-      { id: "productivity", name: "Productivity", icon: "⏱️", color: "bg-purple-500" },
-      { id: "finance", name: "Finance", icon: "💰", color: "bg-yellow-500" },
-      { id: "creativity", name: "Creativity", icon: "🎨", color: "bg-pink-500" },
-      { id: "social", name: "Social", icon: "👥", color: "bg-indigo-500" }
+      { id: "finance", name: "Finance", icon: "💰", color: "bg-emerald-500" },
+      { id: "creativity", name: "Creativity", icon: "🎨", color: "bg-purple-500" }
     ];
     
-    return categories.map(category => {
-      const categoryHabits = habits.filter(habit => habit.category === category.id);
-      return {
-        ...category,
-        count: categoryHabits.length,
-        habits: categoryHabits
-      };
-    }).filter(category => category.count > 0);
+    return categories;
   };
 
-  // Social section functions
+  // Show toast notification
   const showToast = (title: string, description: string) => {
     toast({
       title,
@@ -225,157 +159,37 @@ export default function DashboardHome() {
     });
   };
 
-  const handleAddFriend = async () => {
-    if (!user) {
-      showToast("Authentication Error", "You must be logged in to add friends.");
-      return;
-    }
-    
-    if (!friendEmail.trim() || !friendEmail.includes('@')) {
-      showToast("Invalid email", "Please enter a valid email address");
-      return;
-    }
-    
-    try {
-      // In a real app, this would send an API request to add a friend
-      console.log(`Adding friend with email: ${friendEmail}`);
-      
-      showToast("Friend request sent", `A friend request has been sent to ${friendEmail}`);
-      setFriendEmail("");
-      setIsAddFriendDialogOpen(false);
-    } catch (error) {
-      console.error("Error adding friend:", error);
-      showToast("Error", "Failed to send friend request. Please try again.");
-    }
-  };
-
-  const handleJoinChallenge = async (id: string) => {
-    showToast("Challenge joined!", "You've successfully joined the challenge.");
-  };
-
-  const handleLeaveChallenge = async (id: string) => {
-    showToast("Challenge left", "You've left the challenge.");
-  };
-
-  const handleCreateChallenge = async (
-    name: string,
-    description: string,
-    type: string,
-    goal: number,
-    startDate: Date,
-    endDate: Date
-  ) => {
-    if (!user) {
-      showToast("Authentication Error", "You must be logged in to create challenges.");
-      return;
-    }
-    
-    try {
-      // Validate inputs
-      if (!name || !description || !type || !goal || !startDate || !endDate) {
-        showToast("Validation Error", "Please fill all fields to create a challenge");
-        return;
-      }
-      
-      if (goal <= 0) {
-        showToast("Validation Error", "Goal must be greater than zero");
-        return;
-      }
-      
-      if (endDate <= startDate) {
-        showToast("Validation Error", "End date must be after start date");
-        return;
-      }
-      
-      // In a real app, this would create a challenge in the database
-      console.log("Creating challenge:", { name, description, type, goal, startDate, endDate });
-      
-      showToast("Challenge created!", "Your new challenge has been created.");
-      
-      // Optionally refresh the challenges list
-      // await loadChallenges();
-    } catch (error) {
-      console.error("Error creating challenge:", error);
-      showToast("Error", "Failed to create challenge. Please try again.");
-    }
-  };
-
-  const handleUpdateProgress = async (challengeId: string, progress: number) => {
-    if (!user) {
-      showToast("Authentication Error", "You must be logged in to update progress.");
-      return;
-    }
-    
-    try {
-      // Validate inputs
-      if (!challengeId) {
-        showToast("Error", "Invalid challenge ID");
-        return;
-      }
-      
-      if (progress < 0) {
-        showToast("Validation Error", "Progress cannot be negative");
-        return;
-      }
-      
-      // Find the challenge to get its goal value
-      const challenge = mockChallenges.find(c => c.id === challengeId);
-      if (challenge && progress > challenge.goal) {
-        showToast("Warning", `Progress exceeds the goal of ${challenge.goal}`);
-        // You might want to cap the progress at the goal value
-        // progress = challenge.goal;
-      }
-      
-      // In a real app, this would update the progress in the database
-      console.log("Updating progress:", { challengeId, progress });
-      
-      showToast("Progress updated!", "Your challenge progress has been updated.");
-    } catch (error) {
-      console.error("Error updating progress:", error);
-      showToast("Error", "Failed to update progress. Please try again.");
-    }
-  };
-
-  // Adapt user data for our component
+  // Adapt user data for components
   const adaptedUser = user ? {
     id: user.id,
     name: user.user_metadata?.full_name || user.email,
     email: user.email
   } : { id: "", name: "", email: "" };
 
-  // Add an effect to reload habits when the component mounts
+  // Check for URL query parameters
   useEffect(() => {
-    const loadHabitsData = async () => {
-      console.log("Dashboard: Loading habits data");
-      await loadHabits();
-      console.log("Dashboard: Habits data loaded successfully");
-    };
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
     
-    loadHabitsData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Add searchParams logging
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const refreshParam = url.searchParams.get('refresh');
-    if (refreshParam) {
-      console.log(`Dashboard: Detected refresh parameter: ${refreshParam}`);
-      loadHabits();
-    }
-    
-    // Set active tab based on URL parameter
-    const tabParam = url.searchParams.get('tab');
-    if (tabParam && ['habits', 'analytics', 'social'].includes(tabParam)) {
+    if (tabParam && ['habits', 'analytics'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Load habits data
+  useEffect(() => {
+    if (user) {
+      loadHabits();
+    }
+  }, [user, loadHabits]);
+
   return (
-    <div className="space-y-6 p-8">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold">Dashboard</h2>
+    <div className="container mx-auto px-4 py-4 md:py-8 max-w-6xl">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold">Habit Dashboard</h1>
+          <p className="text-muted-foreground mt-1">Track and manage your daily habits</p>
+        </div>
         <div className="flex gap-2">
           <Button onClick={() => router.push('/dashboard/add-habit')} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -385,10 +199,9 @@ export default function DashboardHome() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="habits">Habits</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          <TabsTrigger value="social">Social</TabsTrigger>
         </TabsList>
 
         <TabsContent value="habits" className="space-y-4">
@@ -451,130 +264,6 @@ export default function DashboardHome() {
 
         <TabsContent value="analytics">
           <DashboardAnalytics habits={habits} />
-        </TabsContent>
-
-        <TabsContent value="social" className="space-y-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h3 className="text-2xl font-bold tracking-tight">Social</h3>
-              <p className="text-muted-foreground">Connect with friends and join challenges</p>
-            </div>
-            <Button className="gap-2" onClick={() => setIsAddFriendDialogOpen(true)}>
-              <UserPlus className="h-4 w-4" />
-              Add Friend
-            </Button>
-          </div>
-
-          <Tabs value={socialSubTab} onValueChange={setSocialSubTab} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="friends">Friends</TabsTrigger>
-              <TabsTrigger value="challenges">Challenges</TabsTrigger>
-              <TabsTrigger value="activity">Activity</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="friends" className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {mockFriends.map((friend) => (
-                  <Card key={friend.id}>
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={friend.avatar} alt={friend.name} />
-                            <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <CardTitle className="text-lg">{friend.name}</CardTitle>
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Badge variant="outline" className="mr-2">
-                                <div className={`mr-1 h-2 w-2 rounded-full ${friend.status === 'online' ? 'bg-green-500' : 'bg-gray-300'}`} />
-                                {friend.status === 'online' ? 'Online' : 'Offline'}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-1">
-                            <Trophy className="h-4 w-4 text-amber-500" />
-                            <span>Active</span>
-                          </div>
-                          <span className="font-medium">
-                            {friend.lastActive ? new Date(friend.lastActive).toLocaleDateString() : 'N/A'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-1">
-                            <Heart className="h-4 w-4 text-red-500" />
-                            <span>Email</span>
-                          </div>
-                          <span className="font-medium">{friend.email}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </TabsContent>
-
-            <TabsContent value="challenges">
-              <SocialChallengesView
-                challenges={mockChallenges}
-                friends={mockFriends}
-                user={adaptedUser}
-                loading={false}
-                onJoinChallenge={handleJoinChallenge}
-                onLeaveChallenge={handleLeaveChallenge}
-                onCreateChallenge={handleCreateChallenge}
-                onUpdateProgress={handleUpdateProgress}
-              />
-            </TabsContent>
-
-            <TabsContent value="activity">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Activity</CardTitle>
-                  <CardDescription>See what your friends have been up to</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-center text-muted-foreground py-8">
-                    Activity feed coming soon!
-                  </p>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-
-          {/* Add Friend Dialog */}
-          <Dialog open={isAddFriendDialogOpen} onOpenChange={setIsAddFriendDialogOpen}>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Add a Friend</DialogTitle>
-                <DialogDescription>
-                  Enter your friend's email address to send them a friend request.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="friend-email" className="text-right">Email</Label>
-                  <Input
-                    id="friend-email"
-                    type="email"
-                    placeholder="friend@example.com"
-                    value={friendEmail}
-                    onChange={(e) => setFriendEmail(e.target.value)}
-                    className="col-span-3"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit" onClick={handleAddFriend}>Send Friend Request</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </TabsContent>
       </Tabs>
     </div>

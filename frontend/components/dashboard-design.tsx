@@ -4,7 +4,6 @@ import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { HabitDashboardDesign } from "@/components/habit-dashboard-design"
 import { ProgressViewDesign } from "@/components/progress-view-design"
-import { SocialViewDesign } from "@/components/social-view-design"
 import { SettingsViewDesign } from "@/components/settings-view-design"
 import { ProfileViewDesign } from "@/components/profile-view-design"
 import { NotificationsViewDesign } from "@/components/notifications-view-design"
@@ -36,10 +35,9 @@ export function DashboardDesign() {
             </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-              <TabsList className="grid grid-cols-6 w-full max-w-2xl mx-auto hidden md:grid">
+              <TabsList className="grid grid-cols-5 w-full max-w-2xl mx-auto hidden md:grid">
                 <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
                 <TabsTrigger value="progress">Progress</TabsTrigger>
-                <TabsTrigger value="social">Social</TabsTrigger>
                 <TabsTrigger value="profile">Profile</TabsTrigger>
                 <TabsTrigger value="notifications">Notifications</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -51,10 +49,6 @@ export function DashboardDesign() {
 
               <TabsContent value="progress" className="space-y-6">
                 <ProgressViewDesign />
-              </TabsContent>
-
-              <TabsContent value="social" className="space-y-6">
-                <SocialViewDesign />
               </TabsContent>
 
               <TabsContent value="profile" className="space-y-6">

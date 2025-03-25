@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, Home, LineChart, Plus, Users } from "lucide-react"
+import { Bell, Home, LineChart, Plus } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface MobileNavDesignProps {
@@ -13,7 +13,6 @@ export function MobileNavDesign({ activeTab, setActiveTab }: MobileNavDesignProp
     { id: "dashboard", label: "Home", icon: Home },
     { id: "progress", label: "Progress", icon: LineChart },
     { id: "add-habit", label: "Add", icon: Plus },
-    { id: "social", label: "Social", icon: Users },
     { id: "notifications", label: "Alerts", icon: Bell },
   ]
 
