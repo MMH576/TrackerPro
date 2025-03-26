@@ -7,6 +7,7 @@ import type React from "react"
 import { CustomHeader } from "@/components/custom-header"
 import { Toaster } from "@/components/ui/toaster"
 import { PomodoroProvider } from "@/contexts/pomodoro-context";
+import { TaskProvider } from "@/contexts/task-context";
 import { FloatingTimer } from "@/components/floating-timer";
 
 export default function DashboardLayout({
@@ -42,16 +43,18 @@ export default function DashboardLayout({
 
   return (
     <PomodoroProvider>
-      <div className="relative min-h-screen bg-background flex flex-col">
-        <CustomHeader />
-        <div className="container mx-auto max-w-6xl flex-1">
-          <main className="p-4">
-            {children}
-          </main>
+      <TaskProvider>
+        <div className="relative min-h-screen bg-background flex flex-col">
+          <CustomHeader />
+          <div className="container mx-auto max-w-6xl flex-1">
+            <main className="p-4">
+              {children}
+            </main>
+          </div>
+          <Toaster />
+          <FloatingTimer />
         </div>
-        <Toaster />
-        <FloatingTimer />
-      </div>
+      </TaskProvider>
     </PomodoroProvider>
   )
 }

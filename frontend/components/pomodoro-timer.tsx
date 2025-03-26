@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePomodoroContext } from '@/contexts/pomodoro-context';
-import React from 'react';
 import { Switch } from "@/components/ui/switch";
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { TaskManager } from '@/components/task-manager';
 
 // CSS to hide number input spinners
 const hideSpinners = {
@@ -195,10 +197,10 @@ export function PomodoroTimer() {
   };
 
   return (
-    <div className="flex flex-col gap-6 animation-all duration-300">
+    <div className="w-full max-w-5xl mx-auto px-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <motion.div 
-          className="md:col-span-2"
+          className="md:col-span-2 space-y-6"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -372,10 +374,12 @@ export function PomodoroTimer() {
               </div>
             </CardContent>
           </Card>
+          
+          <TaskManager />
         </motion.div>
         
         <motion.div
-          className="md:col-span-1"
+          className="space-y-6"
           initial={{ opacity: 0, x: 10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
@@ -446,97 +450,97 @@ export function PomodoroTimer() {
               </Button>
             </CardContent>
           </Card>
+          
+          {/* Settings panel */}
+          <AnimatePresence>
+            {showSettings && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3 }}
+                className="w-full overflow-hidden"
+              >
+                <Card className="w-full">
+                  <CardHeader>
+                    <CardTitle>Timer Settings</CardTitle>
+                    <CardDescription>
+                      Customize your Pomodoro timer settings
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="pomodoro-time">Pomodoro Duration: {localPomodoroTime} min</Label>
+                        <Input 
+                          id="pomodoro-time"
+                          className="w-full bg-background/60 no-spinners" 
+                          type="number" 
+                          min={5} 
+                          max={60}
+                          value={localPomodoroTime}
+                          onChange={(e) => setLocalPomodoroTime(Number(e.target.value))}
+                        />
+                      </div>
+                      
+                      <div className="grid gap-2">
+                        <Label htmlFor="short-break-time">Short Break: {localShortBreakTime} min</Label>
+                        <Input 
+                          id="short-break-time"
+                          className="w-full bg-background/60 no-spinners" 
+                          type="number" 
+                          min={1} 
+                          max={15}
+                          value={localShortBreakTime}
+                          onChange={(e) => setLocalShortBreakTime(Number(e.target.value))}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid gap-4">
+                      <div className="grid gap-2">
+                        <Label htmlFor="long-break-time">Long Break: {localLongBreakTime} min</Label>
+                        <Input 
+                          id="long-break-time"
+                          className="w-full bg-background/60 no-spinners" 
+                          type="number" 
+                          min={10} 
+                          max={30}
+                          value={localLongBreakTime}
+                          onChange={(e) => setLocalLongBreakTime(Number(e.target.value))}
+                        />
+                      </div>
+                      
+                      <div className="grid gap-2">
+                        <Label htmlFor="long-break-interval">Long Break Interval: Every {localLongBreakInterval} sessions</Label>
+                        <Input 
+                          id="long-break-interval"
+                          className="w-full bg-background/60 no-spinners" 
+                          type="number" 
+                          min={2} 
+                          max={8}
+                          value={localLongBreakInterval}
+                          onChange={(e) => setLocalLongBreakInterval(Number(e.target.value))}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex justify-between">
+                    <Button variant="outline" onClick={() => setShowSettings(false)}>Cancel</Button>
+                    <Button 
+                      onClick={applySettings} 
+                      className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Apply Settings
+                    </Button>
+                  </CardFooter>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       </div>
-      
-      {/* Settings panel */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
-            className="w-full overflow-hidden"
-          >
-            <Card className="w-full">
-              <CardHeader>
-                <CardTitle>Timer Settings</CardTitle>
-                <CardDescription>
-                  Customize your Pomodoro timer settings
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="grid gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="pomodoro-time">Pomodoro Duration: {localPomodoroTime} min</Label>
-                    <Input 
-                      id="pomodoro-time"
-                      className="w-full bg-background/60 no-spinners" 
-                      type="number" 
-                      min={5} 
-                      max={60}
-                      value={localPomodoroTime}
-                      onChange={(e) => setLocalPomodoroTime(Number(e.target.value))}
-                    />
-                  </div>
-                  
-                  <div className="grid gap-2">
-                    <Label htmlFor="short-break-time">Short Break: {localShortBreakTime} min</Label>
-                    <Input 
-                      id="short-break-time"
-                      className="w-full bg-background/60 no-spinners" 
-                      type="number" 
-                      min={1} 
-                      max={15}
-                      value={localShortBreakTime}
-                      onChange={(e) => setLocalShortBreakTime(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-                
-                <div className="grid gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="long-break-time">Long Break: {localLongBreakTime} min</Label>
-                    <Input 
-                      id="long-break-time"
-                      className="w-full bg-background/60 no-spinners" 
-                      type="number" 
-                      min={10} 
-                      max={30}
-                      value={localLongBreakTime}
-                      onChange={(e) => setLocalLongBreakTime(Number(e.target.value))}
-                    />
-                  </div>
-                  
-                  <div className="grid gap-2">
-                    <Label htmlFor="long-break-interval">Long Break Interval: Every {localLongBreakInterval} sessions</Label>
-                    <Input 
-                      id="long-break-interval"
-                      className="w-full bg-background/60 no-spinners" 
-                      type="number" 
-                      min={2} 
-                      max={8}
-                      value={localLongBreakInterval}
-                      onChange={(e) => setLocalLongBreakInterval(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button variant="outline" onClick={() => setShowSettings(false)}>Cancel</Button>
-                <Button 
-                  onClick={applySettings} 
-                  className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
-                >
-                  <CheckCircle className="h-4 w-4" />
-                  Apply Settings
-                </Button>
-              </CardFooter>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 } 

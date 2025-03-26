@@ -3,19 +3,16 @@
 import React from 'react';
 import { Toaster } from '@/components/ui/toaster';
 import { UserProvider } from '@/hooks/use-user';
-import { FriendsProvider } from '@/hooks/use-friends';
-import { ChallengesProvider } from '@/hooks/use-challenges';
+import { TaskProvider } from '@/contexts/task-context';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <>
       <UserProvider>
-        <FriendsProvider>
-          <ChallengesProvider>
-            {children}
-            <Toaster />
-          </ChallengesProvider>
-        </FriendsProvider>
+        <TaskProvider>
+          {children}
+          <Toaster />
+        </TaskProvider>
       </UserProvider>
     </>
   );
