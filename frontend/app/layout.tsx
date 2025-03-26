@@ -7,6 +7,8 @@ import { UserProvider } from '@/hooks/use-user'
 import { AuthProvider } from '@/lib/auth-context'
 import { NotificationProvider } from '@/components/notification-provider'
 import { Toaster } from '@/components/ui/toaster'
+import { SupabaseProvider } from '@/lib/supabase-context'
+import { SpotifyProvider } from '@/contexts/spotify-context'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -37,14 +39,18 @@ export default function RootLayout({
         >
           <ThemeProvider>
             <AuthProvider>
-              <UserProvider>
-                <NotificationProvider>
-                  <div className="flex min-h-screen flex-col">
-                    {children}
-                  </div>
-                  <Toaster />
-                </NotificationProvider>
-              </UserProvider>
+              <SupabaseProvider>
+                <SpotifyProvider>
+                  <UserProvider>
+                    <NotificationProvider>
+                      <div className="flex min-h-screen flex-col">
+                        {children}
+                      </div>
+                      <Toaster />
+                    </NotificationProvider>
+                  </UserProvider>
+                </SpotifyProvider>
+              </SupabaseProvider>
             </AuthProvider>
           </ThemeProvider>
         </NextThemeProvider>
