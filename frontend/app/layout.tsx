@@ -31,6 +31,24 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Polyfill Sentry to prevent errors when blocked by ad blockers
+              window.onerror = function(message, source, lineno, colno, error) {
+                // Check if error contains Sentry
+                if (message && message.includes('Sentry') && message.includes('ERR_BLOCKED_BY_CLIENT')) {
+                  // Suppress console errors for blocked Sentry calls
+                  console.debug('Sentry error suppressed due to ad blocker');
+                  return true;
+                }
+                return false;
+              };
+            `
+          }}
+        />
+      </head>
       <body className={`${inter.className} antialiased min-h-screen`}>
         <NextThemeProvider
           attribute="class"

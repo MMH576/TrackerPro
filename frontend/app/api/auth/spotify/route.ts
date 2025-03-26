@@ -1,68 +1,93 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import querystring from 'querystring';
 
 // Generate the Spotify authorization URL
-function getAuthUrl() {
-  // Log environment variables to debug
-  console.log('Environment variables:', {
-    clientId: process.env.SPOTIFY_CLIENT_ID ? 'set' : 'missing',
-    redirectUri: process.env.SPOTIFY_REDIRECT_URI ? 'set' : 'missing'
-  });
+function getAuthUrl(request: NextRequest) {
+  // Get client ID from environment variables
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const redirectUri = process.env.SPOTIFY_REDIRECT_URI;
+  
+  // Log environment variables for debugging
+  console.log('SPOTIFY_CLIENT_ID:', clientId);
+  console.log('SPOTIFY_REDIRECT_URI:', redirectUri);
+  
+  // Get the returnTo path from query parameters
+  const { searchParams } = new URL(request.url);
+  const returnTo = searchParams.get('returnTo') || '/pomodoro';
+  console.log('returnTo:', returnTo);
+  
+  if (!clientId || !redirectUri) {
+    console.error('Missing Spotify credentials');
+    return { error: 'Missing Spotify credentials', url: null };
+  }
 
-  const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-  const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
-  const AUTH_ENDPOINT = 'https://accounts.spotify.com/authorize';
-  const SCOPES = [
+  // Generate a random string for the state parameter
+  // Include the returnTo path in the state to ensure we can redirect back
+  const stateObj = {
+    random: Math.random().toString(36).substring(2, 15),
+    returnTo: returnTo
+  };
+  const state = Buffer.from(JSON.stringify(stateObj)).toString('base64');
+
+  // Define the scopes for the authorization
+  const scope = [
     'user-read-private',
     'user-read-email',
-    'user-read-playback-state',
     'user-modify-playback-state',
+    'user-read-playback-state',
     'user-read-currently-playing',
     'streaming',
     'playlist-read-private',
     'playlist-read-collaborative'
-  ];
+  ].join(' ');
 
-  if (!CLIENT_ID || !REDIRECT_URI) {
-    console.error('Missing required environment variables:', {
-      'SPOTIFY_CLIENT_ID': CLIENT_ID ? 'set' : 'missing',
-      'SPOTIFY_REDIRECT_URI': REDIRECT_URI ? 'set' : 'missing'
-    });
-    throw new Error('Missing required environment variables');
-  }
-
-  const params = new URLSearchParams({
-    client_id: CLIENT_ID,
+  // Construct and return the authorization URL
+  const params = {
     response_type: 'code',
-    redirect_uri: REDIRECT_URI,
-    scope: SCOPES.join(' '),
+    client_id: clientId,
+    scope: scope,
+    redirect_uri: redirectUri,
+    state: state,
     show_dialog: 'true'
-  });
+  };
 
-  const authUrl = `${AUTH_ENDPOINT}?${params.toString()}`;
-  console.log('Generated auth URL:', authUrl);
-  return authUrl;
+  return { 
+    error: null, 
+    url: `https://accounts.spotify.com/authorize?${querystring.stringify(params)}`
+  };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const authUrl = getAuthUrl();
-    console.log('Redirecting to Spotify auth URL');
+    const result = getAuthUrl(request);
     
-    // Set a cookie to track the auth flow
-    const response = NextResponse.redirect(authUrl);
-    response.cookies.set('spotify_auth_pending', 'true', {
+    if (result.error) {
+      // Extract returnTo from the request
+      const { searchParams } = new URL(request.url);
+      const returnTo = searchParams.get('returnTo') || '/pomodoro';
+      
+      // Redirect to the return path with error
+      const redirectUrl = `${returnTo}?error=${encodeURIComponent(result.error)}`;
+      return NextResponse.redirect(new URL(redirectUrl, request.url));
+    }
+    
+    // Set a cookie to track the authentication flow
+    const response = NextResponse.redirect(new URL(result.url as string));
+    response.cookies.set('spotify_auth_state', 'pending', {
       maxAge: 10 * 60, // 10 minutes
       path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
     });
     
     return response;
-  } catch (error: any) {
-    console.error('Error generating auth URL:', error);
-    // Redirect to an error page with the error message
-    const errorMessage = encodeURIComponent(error.message || 'Failed to connect to Spotify');
-    return NextResponse.redirect(new URL(`/error?message=${errorMessage}`, process.env.NEXT_PUBLIC_APP_URL));
+  } catch (error) {
+    console.error('Error in Spotify authorization:', error);
+    
+    // Extract returnTo from the request
+    const { searchParams } = new URL(request.url);
+    const returnTo = searchParams.get('returnTo') || '/pomodoro';
+    
+    // Redirect to the return path with error
+    const redirectUrl = `${returnTo}?error=${encodeURIComponent('Failed to initialize Spotify authorization')}`;
+    return NextResponse.redirect(new URL(redirectUrl, request.url));
   }
 } 

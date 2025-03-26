@@ -1,3 +1,5 @@
+import Cookies from 'js-cookie';
+
 interface SpotifyToken {
   access_token: string;
   expires_at: string;
@@ -6,117 +8,84 @@ interface SpotifyToken {
 export interface Track {
   id: string;
   name: string;
-  artists: { name: string }[];
-  album: {
-    name: string;
-    images: { url: string; height: number; width: number }[];
-  };
-  duration_ms: number;
   uri: string;
+  album?: {
+    id: string;
+    name: string;
+    images?: Array<{
+      url: string;
+      height: number;
+      width: number;
+    }>;
+  };
+  artists?: Array<{
+    id: string;
+    name: string;
+  }>;
 }
 
 export interface Playlist {
   id: string;
   name: string;
-  description: string;
-  images: { url: string; height: number; width: number }[];
-  tracks: {
-    total: number;
-  };
   uri: string;
+  description?: string;
+  images?: Array<{
+    url: string;
+    height: number;
+    width: number;
+  }>;
+  tracks?: {
+    total: number;
+    items?: Array<{
+      track: Track;
+    }>;
+  };
 }
 
 export class SpotifyClient {
+  private baseUrl = 'https://api.spotify.com/v1';
   private accessToken: string | null = null;
-  private expiresAt: Date | null = null;
-  private userId: string | null = null;
-  private refreshPromise: Promise<void> | null = null;
+  private refreshToken: string | null = null;
 
-  constructor(userId: string) {
-    console.log('SpotifyClient constructor called with userId:', userId);
-    this.userId = userId;
+  constructor() {
+    // Get tokens from cookies
+    this.accessToken = Cookies.get('spotify_access_token') || null;
+    this.refreshToken = Cookies.get('spotify_refresh_token') || null;
   }
 
-  async initialize() {
-    if (!this.userId) {
-      throw new Error('User ID is required');
+  private async refreshAccessToken(): Promise<void> {
+    if (!this.refreshToken) {
+      throw new Error('No refresh token available');
     }
 
     try {
-      console.log('Initializing Spotify client for user:', this.userId);
       const response = await fetch('/api/auth/spotify/refresh', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ userId: this.userId }),
+        body: JSON.stringify({ refresh_token: this.refreshToken }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to refresh token:', errorData);
-        throw new Error(errorData.error || 'Failed to refresh token');
+        throw new Error(`Failed to refresh token: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('Token refresh response:', {
-        hasAccessToken: !!data.access_token,
-        expiresAt: data.expires_at
+      this.accessToken = data.access_token;
+      
+      // Update cookies
+      Cookies.set('spotify_access_token', data.access_token, { 
+        expires: new Date(new Date().getTime() + data.expires_in * 1000),
+        sameSite: 'lax'
       });
       
-      if (data.access_token) {
-        this.accessToken = data.access_token;
-        this.expiresAt = new Date(data.expires_at);
-        console.log('Successfully initialized Spotify client');
-      }
-    } catch (error) {
-      console.error('Error initializing Spotify client:', error);
-      throw error;
-    }
-  }
-
-  private async ensureValidToken() {
-    if (!this.userId) {
-      throw new Error('User ID is required');
-    }
-
-    // If there's already a refresh in progress, wait for it
-    if (this.refreshPromise) {
-      await this.refreshPromise;
-      return;
-    }
-
-    const now = new Date();
-    const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
-
-    // Check if token is expired or will expire in the next 5 minutes
-    if (!this.accessToken || !this.expiresAt || this.expiresAt < fiveMinutesFromNow) {
-      // Set refreshPromise to prevent multiple simultaneous refreshes
-      this.refreshPromise = this.refreshToken();
-      await this.refreshPromise;
-      this.refreshPromise = null;
-    }
-  }
-
-  private async refreshToken() {
-    try {
-      const response = await fetch('/api/auth/spotify/refresh', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId: this.userId }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to refresh token');
-      }
-
-      const data = await response.json();
-      if (data.access_token) {
-        this.accessToken = data.access_token;
-        this.expiresAt = new Date(data.expires_at);
+      if (data.refresh_token) {
+        this.refreshToken = data.refresh_token;
+        Cookies.set('spotify_refresh_token', data.refresh_token, { 
+          expires: 30,
+          sameSite: 'lax'
+        });
       }
     } catch (error) {
       console.error('Error refreshing token:', error);
@@ -124,135 +93,207 @@ export class SpotifyClient {
     }
   }
 
-  private async fetchSpotifyAPI(endpoint: string, options: Record<string, any> = {}) {
-    await this.ensureValidToken();
-
-    const url = `https://api.spotify.com/v1${endpoint}`;
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Spotify API error:', { 
-        status: response.status, 
-        url, 
-        error: errorData 
-      });
-      throw new Error(`Spotify API error: ${response.status}`);
+  private async fetchWithAuth(url: string, options: RequestInit = {}): Promise<any> {
+    if (!this.accessToken) {
+      throw new Error('Not authenticated with Spotify');
     }
 
-    return response.json();
+    const requestOptions: RequestInit = {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${this.accessToken}`,
+      },
+    };
+
+    try {
+      const response = await fetch(url, requestOptions);
+
+      // Handle token expiration
+      if (response.status === 401) {
+        await this.refreshAccessToken();
+        // Retry with new token
+        requestOptions.headers = {
+          ...requestOptions.headers,
+          'Authorization': `Bearer ${this.accessToken}`,
+        };
+        return fetch(url, requestOptions).then(res => {
+          if (!res.ok) throw new Error(`Spotify API error: ${res.status} ${res.statusText}`);
+          return res.json();
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching from Spotify API:', error);
+      throw error;
+    }
   }
 
+  // Get current user's profile
+  async getProfile(): Promise<any> {
+    return this.fetchWithAuth(`${this.baseUrl}/me`);
+  }
+
+  // Get user's playlists
   async getUserPlaylists(limit = 50): Promise<Playlist[]> {
-    const data = await this.fetchSpotifyAPI(`/me/playlists?limit=${limit}`);
+    const data = await this.fetchWithAuth(`${this.baseUrl}/me/playlists?limit=${limit}`);
     return data.items;
   }
 
-  async getPlaylistTracks(playlistId: string, limit = 100): Promise<Track[]> {
-    const data = await this.fetchSpotifyAPI(`/playlists/${playlistId}/tracks?limit=${limit}`);
+  // Get a playlist's tracks
+  async getPlaylistTracks(playlistId: string, limit = 100, offset = 0): Promise<Track[]> {
+    const data = await this.fetchWithAuth(
+      `${this.baseUrl}/playlists/${playlistId}/tracks?limit=${limit}&offset=${offset}`
+    );
+    
     return data.items.map((item: any) => item.track);
   }
 
-  async getPlaylistById(playlistId: string): Promise<Playlist> {
-    return this.fetchSpotifyAPI(`/playlists/${playlistId}`);
-  }
-
-  async getCurrentPlayback() {
-    try {
-      return await this.fetchSpotifyAPI('/me/player');
-    } catch (error: any) {
-      // It's normal to get a 204 No Content if nothing is playing
-      if (error.message.includes('204')) {
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  async transferPlayback(deviceId: string) {
-    return this.fetchSpotifyAPI('/me/player', {
+  // Start or resume playback
+  async play(deviceId: string, options?: {
+    context_uri?: string;
+    uris?: string[];
+    offset?: { position: number };
+    position_ms?: number;
+  }): Promise<void> {
+    const url = `${this.baseUrl}/me/player/play?device_id=${deviceId}`;
+    
+    await this.fetchWithAuth(url, {
       method: 'PUT',
-      body: JSON.stringify({
-        device_ids: [deviceId],
-        play: false,
-      }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: options ? JSON.stringify(options) : undefined,
     });
   }
 
-  async startPlayback(deviceId: string, uris?: string[], context_uri?: string, offset?: number) {
+  // Pause playback
+  async pause(deviceId: string): Promise<void> {
+    const url = `${this.baseUrl}/me/player/pause?device_id=${deviceId}`;
+    
+    await this.fetchWithAuth(url, {
+      method: 'PUT',
+    });
+  }
+
+  // Skip to next track
+  async next(deviceId: string): Promise<void> {
+    const url = `${this.baseUrl}/me/player/next?device_id=${deviceId}`;
+    
+    await this.fetchWithAuth(url, {
+      method: 'POST',
+    });
+  }
+
+  // Skip to previous track
+  async previous(deviceId: string): Promise<void> {
+    const url = `${this.baseUrl}/me/player/previous?device_id=${deviceId}`;
+    
+    await this.fetchWithAuth(url, {
+      method: 'POST',
+    });
+  }
+
+  // Set volume
+  async setVolume(deviceId: string, volumePercent: number): Promise<void> {
+    const url = `${this.baseUrl}/me/player/volume?device_id=${deviceId}&volume_percent=${Math.round(volumePercent)}`;
+    
+    await this.fetchWithAuth(url, {
+      method: 'PUT',
+    });
+  }
+
+  // Get currently playing track
+  async getCurrentlyPlaying(): Promise<Track | null> {
+    try {
+      const data = await this.fetchWithAuth(`${this.baseUrl}/me/player/currently-playing`);
+      return data.item || null;
+    } catch (error) {
+      console.error('Error getting currently playing track:', error);
+      return null;
+    }
+  }
+
+  // Get user's saved tracks (library)
+  async getSavedTracks(limit = 50, offset = 0): Promise<Track[]> {
+    const data = await this.fetchWithAuth(
+      `${this.baseUrl}/me/tracks?limit=${limit}&offset=${offset}`
+    );
+    
+    return data.items.map((item: any) => item.track);
+  }
+
+  async search(query: string, types = ['track', 'album', 'artist', 'playlist'], limit = 10) {
+    const typesString = types.join(',');
+    const data = await this.fetchWithAuth(`/search?q=${encodeURIComponent(query)}&type=${typesString}&limit=${limit}`);
+    return {
+      tracks: data.tracks?.items || [],
+      albums: data.albums?.items || [],
+      artists: data.artists?.items || [],
+      playlists: data.playlists?.items || []
+    };
+  }
+
+  async transferPlayback(deviceId: string) {
+    return this.fetchWithAuth('/me/player', {
+      method: 'PUT',
+      body: JSON.stringify({
+        device_ids: [deviceId],
+        play: false
+      })
+    });
+  }
+
+  async startPlayback(deviceId: string, uris?: string[], contextUri?: string, offset = 0) {
     const body: any = {};
     
-    if (uris && uris.length > 0) {
+    if (contextUri) {
+      body.context_uri = contextUri;
+      if (offset !== undefined) {
+        body.offset = { position: offset };
+      }
+    } else if (uris && uris.length > 0) {
       body.uris = uris;
     }
-    
-    if (context_uri) {
-      body.context_uri = context_uri;
-    }
-    
-    if (offset !== undefined) {
-      body.offset = { position: offset };
-    }
-    
-    try {
-      await this.fetchSpotifyAPI(`/me/player/play?device_id=${deviceId}`, {
-        method: 'PUT',
-        body: JSON.stringify(body),
-      });
-    } catch (error) {
-      console.error('Error starting playback:', error);
-      throw error;
-    }
+
+    return this.fetchWithAuth(`/me/player/play?device_id=${deviceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(body)
+    });
   }
 
   async pausePlayback(deviceId: string) {
-    try {
-      await this.fetchSpotifyAPI(`/me/player/pause?device_id=${deviceId}`, {
-        method: 'PUT',
-      });
-    } catch (error) {
-      console.error('Error pausing playback:', error);
-      throw error;
-    }
+    return this.fetchWithAuth(`/me/player/pause?device_id=${deviceId}`, {
+      method: 'PUT'
+    });
   }
 
   async nextTrack(deviceId: string) {
-    try {
-      await this.fetchSpotifyAPI(`/me/player/next?device_id=${deviceId}`, {
-        method: 'POST',
-      });
-    } catch (error) {
-      console.error('Error skipping to next track:', error);
-      throw error;
-    }
+    return this.fetchWithAuth(`/me/player/next?device_id=${deviceId}`, {
+      method: 'POST'
+    });
   }
 
   async previousTrack(deviceId: string) {
-    try {
-      await this.fetchSpotifyAPI(`/me/player/previous?device_id=${deviceId}`, {
-        method: 'POST',
-      });
-    } catch (error) {
-      console.error('Error skipping to previous track:', error);
-      throw error;
-    }
+    return this.fetchWithAuth(`/me/player/previous?device_id=${deviceId}`, {
+      method: 'POST'
+    });
   }
 
-  async setVolume(deviceId: string, volumePercent: number) {
-    try {
-      await this.fetchSpotifyAPI(`/me/player/volume?device_id=${deviceId}&volume_percent=${volumePercent}`, {
-        method: 'PUT',
-      });
-    } catch (error) {
-      console.error('Error setting volume:', error);
-      throw error;
-    }
+  async getRecommendations(seedTracks: string[] = [], seedArtists: string[] = [], seedGenres: string[] = [], limit = 20) {
+    const params = new URLSearchParams();
+    
+    if (seedTracks.length) params.append('seed_tracks', seedTracks.join(','));
+    if (seedArtists.length) params.append('seed_artists', seedArtists.join(','));
+    if (seedGenres.length) params.append('seed_genres', seedGenres.join(','));
+    params.append('limit', limit.toString());
+    
+    const data = await this.fetchWithAuth(`/recommendations?${params.toString()}`);
+    return data.tracks;
   }
 } 

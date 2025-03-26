@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { 
   Play, Pause, RotateCcw, Coffee, Brain, 
-  Settings, CheckCircle, Bell, BellOff, Timer
+  Settings, CheckCircle, Bell, BellOff, Timer, AlertCircle, 
+  ChevronDown, ChevronUp, Music
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePomodoroContext } from '@/contexts/pomodoro-context';
@@ -16,7 +17,9 @@ import { Switch } from "@/components/ui/switch";
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { TaskManager } from '@/components/task-manager';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import PlayerSpotify, { syncWithPomodoroState } from '@/components/spotify/PlayerSpotify';
+import { SpotifyBrowser } from '@/components/spotify/SpotifyBrowser';
 import { SpotifyProvider } from '@/hooks/use-spotify';
 
 // CSS to hide number input spinners
@@ -75,6 +78,8 @@ export function PomodoroTimer() {
   const [localShortBreakTime, setLocalShortBreakTime] = useState(shortBreakTime);
   const [localLongBreakTime, setLocalLongBreakTime] = useState(longBreakTime);
   const [localLongBreakInterval, setLocalLongBreakInterval] = useState(longBreakInterval);
+  const [spotifyError, setSpotifyError] = useState<string | null>(null);
+  const [expandMusicBrowser, setExpandMusicBrowser] = useState(false);
   
   // Notify context that we're on the Pomodoro page
   useEffect(() => {
@@ -92,6 +97,23 @@ export function PomodoroTimer() {
     setLocalLongBreakTime(longBreakTime);
     setLocalLongBreakInterval(longBreakInterval);
   }, [pomodoroTime, shortBreakTime, longBreakTime, longBreakInterval]);
+  
+  // Check for errors in URL when component mounts
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const queryParams = new URLSearchParams(window.location.search);
+      const errorParam = queryParams.get('error');
+      
+      if (errorParam) {
+        setSpotifyError(errorParam);
+        
+        // Remove the error parameter from the URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('error');
+        window.history.replaceState({}, '', url.toString());
+      }
+    }
+  }, []);
   
   // Apply settings
   const applySettings = () => {
@@ -451,14 +473,53 @@ export function PomodoroTimer() {
           </Card>
           
           <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Music</CardTitle>
-              <CardDescription>Control your Spotify playback</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle className="text-lg flex items-center">
+                  <Music className="mr-2 h-5 w-5" />
+                  Music
+                </CardTitle>
+                <CardDescription>Enhance your focus with music</CardDescription>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setExpandMusicBrowser(!expandMusicBrowser)}
+                className="h-8 w-8 p-0"
+              >
+                {expandMusicBrowser ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
             </CardHeader>
             <CardContent>
+              {spotifyError && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Spotify Error</AlertTitle>
+                  <AlertDescription>{spotifyError}</AlertDescription>
+                </Alert>
+              )}
               <SpotifyProvider>
                 <PlayerSpotify />
                 {syncWithPomodoroState(isRunning, mode)}
+                
+                <AnimatePresence>
+                  {expandMusicBrowser && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <Separator className="my-4" />
+                      <SpotifyBrowser />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </SpotifyProvider>
             </CardContent>
           </Card>

@@ -1,125 +1,164 @@
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import SpotifyWebApi from 'spotify-web-api-node';
+
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const code = searchParams.get('code');
-  const error = searchParams.get('error');
+  console.log('Starting Spotify callback handling...');
   
-  // URL to redirect to after handling the callback
-  const redirectTo = '/pomodoro';
-
+  // Extract the code and error from the URL
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const error = url.searchParams.get('error');
+  const state = url.searchParams.get('state');
+  
+  console.log('Received callback params:', { 
+    code: code ? '✓' : '✗', 
+    error: error || 'none',
+    state: state ? '✓' : '✗'
+  });
+  
   // Handle errors from Spotify authorization
   if (error) {
-    console.error('Spotify auth error:', error);
-    return NextResponse.redirect(new URL(`${redirectTo}?error=${error}`, request.url));
+    console.error('Spotify authorization error:', error);
+    return NextResponse.redirect(new URL(`/pomodoro?error=${encodeURIComponent(error)}`, request.url));
   }
-
-  // If no code is provided, redirect to the main page
+  
+  // Ensure we have a code
   if (!code) {
-    return NextResponse.redirect(new URL(redirectTo, request.url));
+    console.error('No code parameter in callback');
+    return NextResponse.redirect(new URL('/pomodoro?error=missing_code', request.url));
   }
-
+  
+  // Decode the state parameter to extract returnTo
+  let returnTo = '/pomodoro';
+  
+  if (state) {
+    try {
+      const stateObj = JSON.parse(Buffer.from(state, 'base64').toString());
+      returnTo = stateObj.returnTo || '/pomodoro';
+      console.log('Extracted returnTo from state:', returnTo);
+    } catch (error) {
+      console.error('Error parsing state parameter:', error);
+    }
+  }
+  
+  // Now handle the authorization code exchange
   try {
-    // Exchange the authorization code for an access token
-    const tokenResponse = await exchangeCodeForToken(code);
-
-    if (!tokenResponse.access_token) {
-      throw new Error('Failed to obtain access token');
-    }
-
-    // Get the current Supabase user
-    const supabase = createRouteHandlerClient({ cookies });
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.user.id) {
-      throw new Error('User not authenticated');
-    }
-
-    // Calculate token expiry (Spotify tokens last 1 hour)
+    // Initialize the Spotify API client
+    const spotifyApi = new SpotifyWebApi({
+      clientId: SPOTIFY_CLIENT_ID,
+      clientSecret: SPOTIFY_CLIENT_SECRET,
+      redirectUri: SPOTIFY_REDIRECT_URI
+    });
+    
+    console.log('Exchanging code for tokens...');
+    
+    // Exchange the code for tokens
+    const tokenResponse = await spotifyApi.authorizationCodeGrant(code);
+    const { access_token, refresh_token, expires_in } = tokenResponse.body;
+    
+    console.log('Received tokens:', { 
+      access_token: access_token ? '✓' : '✗', 
+      refresh_token: refresh_token ? '✓' : '✗', 
+      expires_in 
+    });
+    
+    // Calculate token expiration time
     const expiresAt = new Date();
-    expiresAt.setSeconds(expiresAt.getSeconds() + tokenResponse.expires_in);
-
-    // Log success for debugging
-    console.log('Successfully obtained Spotify tokens:', {
-      userId: session.user.id,
-      expiresAt: expiresAt.toISOString()
+    expiresAt.setSeconds(expiresAt.getSeconds() + expires_in);
+    
+    // Create response with redirect
+    const response = NextResponse.redirect(new URL(returnTo, request.url));
+    
+    // Set cookies for Spotify tokens with appropriate settings
+    // Make sure cookies are accessible to JavaScript and have appropriate expiration
+    response.cookies.set('spotify_access_token', access_token, {
+      expires: expiresAt,
+      httpOnly: false, // Make accessible to JavaScript
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production'
     });
-
-    // Store the tokens in Supabase
-    const { error: dbError } = await supabase
-      .from('spotify_tokens')
-      .upsert({
-        user_id: session.user.id,
-        access_token: tokenResponse.access_token,
-        refresh_token: tokenResponse.refresh_token,
-        expires_at: expiresAt.toISOString()
-      });
-
-    if (dbError) {
-      console.error('Error storing tokens:', dbError);
-      throw new Error('Failed to store tokens');
+    
+    response.cookies.set('spotify_refresh_token', refresh_token, {
+      expires: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+      httpOnly: false, // Make accessible to JavaScript
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production'
+    });
+    
+    // Set a token expiry cookie to help with client-side expiration checks
+    response.cookies.set('spotify_token_expiry', expiresAt.toISOString(), {
+      expires: expiresAt,
+      httpOnly: false,
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production'
+    });
+    
+    // Set an additional cookie to track connection state
+    response.cookies.set('spotify_connected', 'true', {
+      expires: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+      httpOnly: false,
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production'
+    });
+    
+    // Clear the auth state cookie since the flow is complete
+    response.cookies.set('spotify_auth_state', '', {
+      expires: new Date(0),
+      path: '/',
+    });
+    
+    // Try to get the user session and save tokens
+    try {
+      const supabase = createRouteHandlerClient({ cookies });
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user?.id) {
+        console.log('User is logged in, saving tokens to database');
+        
+        // Save the tokens to the database
+        await supabase
+          .from('spotify_tokens')
+          .upsert({
+            user_id: session.user.id,
+            access_token,
+            refresh_token,
+            expires_at: expiresAt.toISOString()
+          });
+      } else {
+        console.log('No authenticated user, skipping database token storage');
+      }
+    } catch (dbError) {
+      console.error('Database error when storing tokens:', dbError);
+      // Continue with the flow even if database saving fails
     }
-
-    // Set a cookie to indicate successful authentication
-    // Note: This is just for frontend state management, not for authentication
-    const response = NextResponse.redirect(new URL(redirectTo, request.url));
-    response.cookies.set('spotify_connected', 'true', { 
-      maxAge: 30 * 24 * 60 * 60, // 30 days
-      path: '/'
-    });
-
+    
+    console.log('Spotify authentication successful, redirecting to:', returnTo);
     return response;
+    
   } catch (error: any) {
-    console.error('Error during Spotify callback:', error);
+    console.error('Error in Spotify callback:', error);
+    
+    // Extract a useful error message if possible
+    let errorMessage = 'Failed to authenticate with Spotify';
+    if (error.body && error.body.error_description) {
+      errorMessage = error.body.error_description;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    // Redirect back with error
     return NextResponse.redirect(
-      new URL(`${redirectTo}?error=${encodeURIComponent(error.message || 'Authentication failed')}`, request.url)
+      new URL(`${returnTo}?error=${encodeURIComponent(errorMessage)}`, request.url)
     );
   }
-}
-
-async function exchangeCodeForToken(code: string) {
-  const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-  const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-  const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
-  const TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
-
-  // Log environment variables for debugging
-  console.log('Exchange token environment variables:', {
-    clientId: CLIENT_ID ? 'set' : 'missing',
-    clientSecret: CLIENT_SECRET ? 'set' : 'missing',
-    redirectUri: REDIRECT_URI ? 'set' : 'missing'
-  });
-
-  if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
-    throw new Error('Missing required environment variables for token exchange');
-  }
-
-  const params = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: REDIRECT_URI,
-  });
-
-  const response = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')}`
-    },
-    body: params.toString()
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('Spotify API error:', {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorData
-    });
-    throw new Error(`Token exchange failed: ${errorData.error}`);
-  }
-
-  return response.json();
 } 

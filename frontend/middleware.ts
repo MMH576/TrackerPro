@@ -37,6 +37,7 @@ export async function middleware(req: NextRequest) {
   const isPublicRoute = pathname === '/';
   const isDashboardRoute = pathname.startsWith('/dashboard');
   const isSuccessRoute = pathname === '/auth/success'; // Allow access to success page regardless of auth
+  const isSpotifyTestRoute = pathname === '/spotify-test'; // Allow access to Spotify test page
 
   console.log(`Middleware: Path ${pathname}, Session: ${session ? 'exists' : 'none'}`);
 
@@ -54,7 +55,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // If not authenticated and trying to access protected route
-  if (!session && !isAuthRoute && !isApiRoute && !isTestRoute && !isPublicRoute) {
+  if (!session && !isAuthRoute && !isApiRoute && !isTestRoute && !isPublicRoute && !isSpotifyTestRoute) {
     console.log(`Redirecting to login: no session, accessing ${pathname}`);
     const redirectUrl = new URL('/auth/login', req.url);
     return NextResponse.redirect(redirectUrl);

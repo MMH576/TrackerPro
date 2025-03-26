@@ -1,132 +1,167 @@
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import SpotifyWebApi from 'spotify-web-api-node';
+
+const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI;
 
 export async function POST(request: NextRequest) {
   try {
-    // Get the user ID from the request body
-    const { userId } = await request.json();
+    console.log('Refreshing Spotify token...');
     
-    if (!userId) {
-      return new NextResponse(JSON.stringify({ error: 'User ID is required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Get Supabase client
-    const supabase = createRouteHandlerClient({ cookies });
+    // Try to get the refresh token from the request body first
+    let refreshToken: string | null = null;
     
-    // Fetch the user's tokens
-    const { data, error } = await supabase
-      .from('spotify_tokens')
-      .select('access_token, refresh_token, expires_at')
-      .eq('user_id', userId)
-      .single();
-
-    if (error || !data) {
-      console.error('Error fetching token:', error);
-      return new NextResponse(JSON.stringify({ error: 'Tokens not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    try {
+      const body = await request.json();
+      refreshToken = body.refresh_token || body.refreshToken;
+      console.log('Got refresh token from request body');
+    } catch (error) {
+      console.log('No refresh token in request body or invalid JSON');
     }
-
-    // Check if token is expired or will expire in the next 5 minutes
-    const expiresAt = new Date(data.expires_at);
-    const now = new Date();
-    const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
-
-    // If token isn't expired yet and won't expire in the next 5 minutes, return current token
-    if (expiresAt > fiveMinutesFromNow) {
-      console.log('Token still valid, returning current token');
-      return new NextResponse(JSON.stringify({ 
-        access_token: data.access_token,
-        expires_at: data.expires_at
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+    
+    // If no refresh token in body, try to get it from cookies
+    if (!refreshToken) {
+      refreshToken = request.cookies.get('spotify_refresh_token')?.value || null;
+      console.log('Using refresh token from cookies:', refreshToken ? 'Found' : 'Not found');
     }
-
-    console.log('Refreshing token for user:', userId);
-
-    // Refresh the token
-    const refreshedTokens = await refreshSpotifyToken(data.refresh_token);
-
-    if (!refreshedTokens.access_token) {
-      throw new Error('Failed to refresh token');
+    
+    // If still no refresh token, try to get it from database
+    if (!refreshToken) {
+      console.log('No refresh token in cookies, trying database...');
+      
+      try {
+        // Get the user information
+        const supabase = createRouteHandlerClient({ cookies });
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user?.id) {
+          // Fetch the token from the database
+          const { data, error } = await supabase
+            .from('spotify_tokens')
+            .select('refresh_token')
+            .eq('user_id', session.user.id)
+            .single();
+            
+          if (data && !error) {
+            refreshToken = data.refresh_token;
+            console.log('Found refresh token in database');
+          } else {
+            console.error('Error fetching token from database:', error);
+          }
+        } else {
+          console.log('No authenticated user session found');
+        }
+      } catch (dbError) {
+        console.error('Database error:', dbError);
+      }
     }
-
-    // Calculate new expiry
-    const newExpiresAt = new Date();
-    newExpiresAt.setSeconds(newExpiresAt.getSeconds() + refreshedTokens.expires_in);
-
-    console.log('Token refreshed, new expiry:', newExpiresAt.toISOString());
-
-    // Update the tokens in the database
-    const { error: updateError } = await supabase
-      .from('spotify_tokens')
-      .update({
-        access_token: refreshedTokens.access_token,
-        expires_at: newExpiresAt.toISOString(),
-        refresh_token: refreshedTokens.refresh_token || data.refresh_token // Use new refresh token if provided
-      })
-      .eq('user_id', userId);
-
-    if (updateError) {
-      console.error('Error updating tokens:', updateError);
-      throw new Error('Failed to update tokens');
+    
+    // If still no refresh token, return an error
+    if (!refreshToken) {
+      console.error('No refresh token available');
+      return NextResponse.json(
+        { error: 'No refresh token available' },
+        { status: 401 }
+      );
     }
-
-    return new NextResponse(JSON.stringify({ 
-      message: 'Token refreshed successfully',
-      access_token: refreshedTokens.access_token,
-      expires_at: newExpiresAt.toISOString()
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
+    
+    // Initialize Spotify API
+    const spotifyApi = new SpotifyWebApi({
+      clientId: SPOTIFY_CLIENT_ID,
+      clientSecret: SPOTIFY_CLIENT_SECRET,
+      redirectUri: SPOTIFY_REDIRECT_URI,
+      refreshToken
     });
+    
+    // Refresh the access token
+    const response = await spotifyApi.refreshAccessToken();
+    const { access_token, refresh_token: new_refresh_token, expires_in } = response.body;
+    
+    // Calculate expiration time
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + expires_in);
+    
+    console.log('Token refreshed successfully');
+    
+    // Create the response with the format expected by SpotifyClient
+    const refreshResponse = NextResponse.json({
+      access_token,
+      refresh_token: new_refresh_token,
+      expires_in,
+      token_type: 'Bearer'
+    });
+    
+    // Set the new access token in a cookie
+    refreshResponse.cookies.set('spotify_access_token', access_token, {
+      expires: expiresAt,
+      httpOnly: false, // Make accessible to JavaScript
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production'
+    });
+    
+    // Set the new refresh token in a cookie if one was provided
+    if (new_refresh_token) {
+      refreshResponse.cookies.set('spotify_refresh_token', new_refresh_token, {
+        expires: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+        httpOnly: false, // Make accessible to JavaScript
+        path: '/',
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production'
+      });
+      
+      console.log('Updated refresh token in cookies');
+    }
+    
+    // Try to update the database if we have a user session
+    try {
+      const supabase = createRouteHandlerClient({ cookies });
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user?.id) {
+        await supabase
+          .from('spotify_tokens')
+          .upsert({
+            user_id: session.user.id,
+            access_token,
+            refresh_token: new_refresh_token || refreshToken,
+            expires_at: expiresAt.toISOString()
+          });
+          
+        console.log('Updated tokens in database');
+      }
+    } catch (dbError) {
+      console.error('Error updating database with refreshed token:', dbError);
+      // Continue even if database update fails - we have cookies
+    }
+    
+    return refreshResponse;
+    
   } catch (error: any) {
     console.error('Error refreshing token:', error);
-    return new NextResponse(JSON.stringify({ error: error.message || 'Failed to refresh token' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    
+    // Try to extract the error message
+    let errorMessage = 'Failed to refresh token';
+    if (error.body && error.body.error_description) {
+      errorMessage = error.body.error_description;
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    // Clear cookies if refresh fails - likely invalid refresh token
+    const errorResponse = NextResponse.json(
+      { error: errorMessage },
+      { status: 401 }
+    );
+    
+    // Clear the Spotify cookies since authentication failed
+    errorResponse.cookies.delete('spotify_access_token');
+    errorResponse.cookies.delete('spotify_refresh_token');
+    errorResponse.cookies.delete('spotify_connected');
+    
+    return errorResponse;
   }
-}
-
-async function refreshSpotifyToken(refreshToken: string) {
-  const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-  const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-  const TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
-
-  if (!CLIENT_ID || !CLIENT_SECRET) {
-    throw new Error('Missing required environment variables for token refresh');
-  }
-
-  const params = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken
-  });
-
-  const response = await fetch(TOKEN_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')}`
-    },
-    body: params.toString()
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('Token refresh error:', {
-      status: response.status, 
-      error: errorData
-    });
-    throw new Error(`Token refresh failed: ${errorData.error}`);
-  }
-
-  return response.json();
 } 
