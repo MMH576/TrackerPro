@@ -39,7 +39,7 @@ router.get('/', async (req, res) => {
 // Update a pomodoro session state
 router.post('/update', async (req, res) => {
   try {
-    const { userId, mode, timeLeft, isRunning, endTime, sessionsCompleted, settings } = req.body;
+    const { userId, mode, timeLeft, isRunning, endTime, sessionsCompleted, settings, autoStarted } = req.body;
     
     if (!userId) {
       return res.status(400).json({
@@ -63,11 +63,22 @@ router.post('/update', async (req, res) => {
       endTime: endTime || existingSession.endTime,
       sessionsCompleted: sessionsCompleted !== undefined ? sessionsCompleted : existingSession.sessionsCompleted,
       settings: settings || existingSession.settings,
+      autoStarted: autoStarted !== undefined ? autoStarted : existingSession.autoStarted,
       lastUpdated: Date.now()
     };
     
     // Store the updated session
     activeSessions.set(userId, updatedSession);
+    
+    // Broadcast to all clients for real-time stats updates
+    if (io) {
+      io.emit('pomodoroStatsUpdate', {
+        userId,
+        mode: updatedSession.mode,
+        sessionsCompleted: updatedSession.sessionsCompleted,
+        isRunning: updatedSession.isRunning
+      });
+    }
     
     // Sync information to connected clients
     const socketId = connectedUsers.get(userId);
@@ -79,7 +90,8 @@ router.post('/update', async (req, res) => {
         isRunning: updatedSession.isRunning,
         endTime: updatedSession.endTime,
         sessionsCompleted: updatedSession.sessionsCompleted,
-        settings: updatedSession.settings
+        settings: updatedSession.settings,
+        autoStarted: updatedSession.autoStarted
       });
     }
     
@@ -100,7 +112,7 @@ router.post('/update', async (req, res) => {
 // Handle session completion
 router.post('/complete', async (req, res) => {
   try {
-    const { userId, mode, newMode, sessionsCompleted } = req.body;
+    const { userId, mode, newMode, sessionsCompleted, autoStart } = req.body;
     
     if (!userId || !mode || !newMode) {
       return res.status(400).json({
@@ -108,6 +120,13 @@ router.post('/complete', async (req, res) => {
         error: 'Missing required fields'
       });
     }
+    
+    console.log(`Completing session for user ${userId}:`, { 
+      mode, 
+      newMode, 
+      sessionsCompleted, 
+      autoStart 
+    });
     
     const io = req.app.get('io');
     const connectedUsers = req.app.get('connectedUsers');
@@ -117,23 +136,91 @@ router.post('/complete', async (req, res) => {
     const sessionData = activeSessions.get(userId);
     
     if (sessionData) {
+      // Store the auto-start setting if provided
+      if (autoStart !== undefined) {
+        if (!sessionData.settings) {
+          sessionData.settings = { autoStartEnabled: autoStart };
+        } else {
+          sessionData.settings.autoStartEnabled = autoStart;
+        }
+      }
+      
       // Update session state
       sessionData.mode = newMode;
-      sessionData.isRunning = false;
+      sessionData.isRunning = autoStart === true; // Auto-start if specified
       sessionData.sessionsCompleted = sessionsCompleted;
       sessionData.lastUpdated = Date.now();
+      sessionData.autoStarted = autoStart === true;
       
       // Reset timer based on new mode
       if (newMode === 'pomodoro') {
-        sessionData.timeLeft = sessionData.settings.pomodoroTime * 60;
+        const pomodoroTime = sessionData?.settings?.pomodoroTime || 25;
+        sessionData.timeLeft = pomodoroTime * 60;
       } else if (newMode === 'shortBreak') {
-        sessionData.timeLeft = sessionData.settings.shortBreakTime * 60;
+        const shortBreakTime = sessionData?.settings?.shortBreakTime || 5;
+        sessionData.timeLeft = shortBreakTime * 60;
       } else {
-        sessionData.timeLeft = sessionData.settings.longBreakTime * 60;
+        const longBreakTime = sessionData?.settings?.longBreakTime || 15;
+        sessionData.timeLeft = longBreakTime * 60;
+      }
+      
+      // If auto-start is enabled, set a new end time
+      if (autoStart === true) {
+        sessionData.endTime = Date.now() + (sessionData.timeLeft * 1000);
+        console.log(`Auto-starting timer for user ${userId} with end time:`, new Date(sessionData.endTime).toISOString());
+      } else {
+        sessionData.endTime = 0;
       }
       
       // Save updated session
       activeSessions.set(userId, sessionData);
+      
+      // Broadcast to all clients for real-time stats updates
+      if (io) {
+        io.emit('pomodoroStatsUpdate', {
+          userId,
+          mode: newMode,
+          sessionsCompleted,
+          isRunning: autoStart === true
+        });
+      }
+    } else {
+      console.log(`No existing session found for user ${userId}, creating new one`);
+      
+      // Create new session if one doesn't exist
+      const newSessionData = {
+        mode: newMode,
+        isRunning: autoStart === true,
+        sessionsCompleted: sessionsCompleted || 0,
+        lastUpdated: Date.now(),
+        autoStarted: autoStart === true,
+        settings: {
+          pomodoroTime: 25,
+          shortBreakTime: 5,
+          longBreakTime: 15,
+          longBreakInterval: 4,
+          autoStartEnabled: autoStart !== undefined ? autoStart : true
+        }
+      };
+      
+      // Set time based on mode
+      if (newMode === 'pomodoro') {
+        newSessionData.timeLeft = newSessionData.settings.pomodoroTime * 60;
+      } else if (newMode === 'shortBreak') {
+        newSessionData.timeLeft = newSessionData.settings.shortBreakTime * 60;
+      } else {
+        newSessionData.timeLeft = newSessionData.settings.longBreakTime * 60;
+      }
+      
+      // Set end time if auto-starting
+      if (autoStart === true) {
+        newSessionData.endTime = Date.now() + (newSessionData.timeLeft * 1000);
+      } else {
+        newSessionData.endTime = 0;
+      }
+      
+      // Save new session
+      activeSessions.set(userId, newSessionData);
     }
     
     // Record completed session in database if needed
@@ -149,7 +236,8 @@ router.post('/complete', async (req, res) => {
               ? (sessionData?.settings?.shortBreakTime || 5) * 60
               : (sessionData?.settings?.longBreakTime || 15) * 60,
           completed_at: new Date().toISOString(),
-          session_number: sessionsCompleted
+          session_number: sessionsCompleted,
+          auto_started: sessionData?.autoStarted || false
         });
       
       if (error) {
@@ -168,14 +256,14 @@ router.post('/complete', async (req, res) => {
       if (mode === 'pomodoro') {
         title = 'Focus Session Completed!';
         message = newMode === 'longBreak' 
-          ? `Great job! Time for a long break.` 
-          : `Great job! Time for a short break.`;
+          ? `Great job! ${autoStart ? 'Starting' : 'Time for'} a long break.` 
+          : `Great job! ${autoStart ? 'Starting' : 'Time for'} a short break.`;
       } else if (mode === 'shortBreak') {
         title = 'Short Break Completed!';
-        message = 'Break time is over. Ready to focus again?';
+        message = `Break time is over. ${autoStart ? 'Starting new focus session.' : 'Ready to focus again?'}`;
       } else if (mode === 'longBreak') {
         title = 'Long Break Completed!';
-        message = 'Long break is over. Let\'s start a new focus session!';
+        message = `Long break is over. ${autoStart ? 'Starting new focus session.' : 'Let\'s start a new focus session!'}`;
       }
       
       // Send notification via socket
@@ -185,6 +273,7 @@ router.post('/complete', async (req, res) => {
         message,
         mode: newMode, 
         sessionsCompleted,
+        autoStart,
         timestamp: Date.now()
       });
       
@@ -194,6 +283,7 @@ router.post('/complete', async (req, res) => {
         previousMode: mode,
         newMode,
         sessionsCompleted,
+        autoStart,
         timestamp: Date.now()
       });
     }
@@ -203,7 +293,8 @@ router.post('/complete', async (req, res) => {
       message: 'Pomodoro session completed',
       data: {
         mode: newMode,
-        sessionsCompleted
+        sessionsCompleted,
+        autoStart
       }
     });
   } catch (error) {

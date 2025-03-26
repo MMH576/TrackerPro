@@ -271,6 +271,15 @@ io.on('connection', (socket) => {
       calculatedEndTime = Date.now() + (data.timeLeft * 1000);
     }
     
+    // Validate settings
+    const validatedSettings = data.settings ? {
+      pomodoroTime: Math.max(1, Math.min(60, data.settings.pomodoroTime || 25)),
+      shortBreakTime: Math.max(1, Math.min(15, data.settings.shortBreakTime || 5)),
+      longBreakTime: Math.max(5, Math.min(30, data.settings.longBreakTime || 15)),
+      longBreakInterval: Math.max(1, Math.min(10, data.settings.longBreakInterval || 4)),
+      autoStartEnabled: data.settings.autoStartEnabled !== undefined ? data.settings.autoStartEnabled : true
+    } : undefined;
+    
     // Update with new data, ensuring precision
     const updatedSession = {
       ...existingSession,
@@ -280,7 +289,8 @@ io.on('connection', (socket) => {
       isRunning: data.isRunning !== undefined ? data.isRunning : existingSession.isRunning,
       endTime: calculatedEndTime || existingSession.endTime,
       sessionsCompleted: data.sessionsCompleted !== undefined ? data.sessionsCompleted : existingSession.sessionsCompleted,
-      settings: data.settings || existingSession.settings,
+      settings: validatedSettings || existingSession.settings,
+      autoStarted: data.autoStarted !== undefined ? data.autoStarted : existingSession.autoStarted,
       lastUpdated: Date.now()
     };
     
@@ -289,6 +299,14 @@ io.on('connection', (socket) => {
     
     // Make sure activeSessions is available to routes
     app.set('activeSessions', activeSessions);
+    
+    // Broadcast stats update to all connected clients for real-time feedback
+    io.emit('pomodoroStatsUpdate', {
+      userId: data.userId,
+      mode: updatedSession.mode,
+      sessionsCompleted: updatedSession.sessionsCompleted,
+      isRunning: updatedSession.isRunning
+    });
     
     // If there are other devices for the same user logged in, sync the state
     if (data.syncAcrossDevices !== false) { // Sync by default unless explicitly disabled
@@ -311,6 +329,68 @@ io.on('connection', (socket) => {
         });
       });
     }
+  });
+  
+  // Handle pomodoro setting update
+  socket.on('pomodoroSettingUpdate', (data) => {
+    console.log('Received pomodoro setting update:', data);
+    
+    if (!data.userId) {
+      console.warn('Received pomodoroSettingUpdate without userId');
+      return;
+    }
+    
+    // Get the active sessions
+    const activeSessions = app.get('activeSessions') || new Map();
+    
+    // Get existing session or create new one
+    const existingSession = activeSessions.get(data.userId) || {};
+    
+    // Update settings
+    const updatedSettings = {
+      ...(existingSession.settings || {
+        pomodoroTime: 25,
+        shortBreakTime: 5,
+        longBreakTime: 15,
+        longBreakInterval: 4,
+        autoStartEnabled: true
+      }),
+      ...(data.settings || {})
+    };
+    
+    // Validate autoStartEnabled (ensure it's a boolean)
+    if (data.settings && data.settings.autoStartEnabled !== undefined) {
+      updatedSettings.autoStartEnabled = !!data.settings.autoStartEnabled;
+      console.log(`Updated autoStartEnabled to ${updatedSettings.autoStartEnabled} for user ${data.userId}`);
+    }
+    
+    // Update the session
+    const updatedSession = {
+      ...existingSession,
+      settings: updatedSettings,
+      lastUpdated: Date.now()
+    };
+    
+    // Store updated session
+    activeSessions.set(data.userId, updatedSession);
+    
+    // Make sure activeSessions is available to routes
+    app.set('activeSessions', activeSessions);
+    
+    // Sync to all of this user's devices
+    // Find all sockets for this user
+    const userSockets = Array.from(io.sockets.sockets.values())
+      .filter(s => s.data?.userId === data.userId);
+    
+    // Broadcast updated settings to all of the user's devices
+    userSockets.forEach(userSocket => {
+      userSocket.emit('pomodoroStateSync', {
+        ...updatedSession,
+        syncTimestamp: Date.now()
+      });
+    });
+    
+    console.log(`Settings updated for user ${data.userId}`);
   });
 });
 

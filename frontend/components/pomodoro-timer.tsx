@@ -13,6 +13,31 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePomodoroContext } from '@/contexts/pomodoro-context';
 import React from 'react';
+import { Switch } from "@/components/ui/switch";
+
+// CSS to hide number input spinners
+const hideSpinners = {
+  WebkitAppearance: 'none',
+  MozAppearance: 'textfield',
+  appearance: 'textfield',
+  margin: 0,
+};
+
+// Mode specific colors with good contrast in both light and dark modes
+const modeColors = {
+  pomodoro: {
+    bg: '#E11D48', // Strong red that works in both themes
+    text: '#FFFFFF'
+  },
+  shortBreak: {
+    bg: '#10B981', // Vibrant green that works in both themes
+    text: '#FFFFFF'
+  },
+  longBreak: {
+    bg: '#3B82F6', // Bright blue that works in both themes
+    text: '#FFFFFF'
+  }
+};
 
 export function PomodoroTimer() {
   // Get Pomodoro context
@@ -22,6 +47,7 @@ export function PomodoroTimer() {
     timeLeft,
     sessionsCompleted,
     soundEnabled,
+    autoStartEnabled,
     pomodoroTime,
     shortBreakTime,
     longBreakTime,
@@ -30,6 +56,7 @@ export function PomodoroTimer() {
     pauseTimer,
     resetTimer,
     toggleSound,
+    toggleAutoStart,
     updateSettings,
     formatTime,
     calculateProgress,
@@ -64,23 +91,33 @@ export function PomodoroTimer() {
   
   // Apply settings
   const applySettings = () => {
+    // Validate input values to ensure they're positive numbers
+    const validPomodoroTime = Math.max(1, Math.min(60, localPomodoroTime || 25));
+    const validShortBreakTime = Math.max(1, Math.min(15, localShortBreakTime || 5));
+    const validLongBreakTime = Math.max(5, Math.min(30, localLongBreakTime || 15));
+    const validLongBreakInterval = Math.max(1, Math.min(10, localLongBreakInterval || 4));
+    
+    // Update local state to show sanitized values
+    setLocalPomodoroTime(validPomodoroTime);
+    setLocalShortBreakTime(validShortBreakTime);
+    setLocalLongBreakTime(validLongBreakTime);
+    setLocalLongBreakInterval(validLongBreakInterval);
+    
+    // Apply settings to context
     updateSettings({
-      pomodoroTime: localPomodoroTime,
-      shortBreakTime: localShortBreakTime,
-      longBreakTime: localLongBreakTime,
-      longBreakInterval: localLongBreakInterval
+      pomodoroTime: validPomodoroTime,
+      shortBreakTime: validShortBreakTime,
+      longBreakTime: validLongBreakTime,
+      longBreakInterval: validLongBreakInterval
     });
+    
+    // Close settings panel
     setShowSettings(false);
   };
 
   // Get background color based on mode
   const getModeBgColor = () => {
-    switch (mode) {
-      case 'pomodoro': return 'bg-primary';
-      case 'shortBreak': return 'bg-green-500';
-      case 'longBreak': return 'bg-blue-500';
-      default: return 'bg-primary';
-    }
+    return modeColors[mode].bg;
   };
 
   // Get text for the current timer status
@@ -93,6 +130,12 @@ export function PomodoroTimer() {
       default: return "Timer running";
     }
   };
+
+  // Force UI refresh when settings change
+  useEffect(() => {
+    // This effect is specifically to force refresh the UI when settings change
+    console.log("Settings updated - refreshing UI");
+  }, [pomodoroTime, shortBreakTime, longBreakTime, longBreakInterval]);
 
   // Timer display
   const TimerDisplay = ({ time, mode }: { time: number, mode: 'pomodoro' | 'shortBreak' | 'longBreak' }) => {
@@ -192,9 +235,10 @@ export function PomodoroTimer() {
                   <Button 
                     variant={mode === 'pomodoro' ? 'default' : 'outline'}
                     className={`rounded-md flex items-center gap-2 transition-all duration-300 ${
-                      mode === 'pomodoro' ? 'bg-red-500 text-white' : 'text-muted-foreground hover:text-foreground'
+                      mode === 'pomodoro' ? 'text-white' : 'text-muted-foreground hover:text-foreground'
                     }`}
                     onClick={() => setMode('pomodoro')}
+                    style={mode === 'pomodoro' ? {backgroundColor: modeColors.pomodoro.bg, color: modeColors.pomodoro.text} : {}}
                   >
                     <Play className="h-4 w-4" />
                     <span>Focus</span>
@@ -202,9 +246,10 @@ export function PomodoroTimer() {
                   <Button 
                     variant={mode === 'shortBreak' ? 'secondary' : 'outline'}
                     className={`rounded-md flex items-center gap-2 transition-all duration-300 ${
-                      mode === 'shortBreak' ? 'bg-green-500 text-white' : 'text-muted-foreground hover:text-foreground'
+                      mode === 'shortBreak' ? 'text-white' : 'text-muted-foreground hover:text-foreground'
                     }`}
                     onClick={() => setMode('shortBreak')}
+                    style={mode === 'shortBreak' ? {backgroundColor: modeColors.shortBreak.bg, color: modeColors.shortBreak.text} : {}}
                   >
                     <Coffee className="h-4 w-4" />
                     <span>Short Break</span>
@@ -212,9 +257,10 @@ export function PomodoroTimer() {
                   <Button 
                     variant={mode === 'longBreak' ? 'secondary' : 'outline'}
                     className={`rounded-md flex items-center gap-2 transition-all duration-300 ${
-                      mode === 'longBreak' ? 'bg-blue-500 text-white' : 'text-muted-foreground hover:text-foreground'
+                      mode === 'longBreak' ? 'text-white' : 'text-muted-foreground hover:text-foreground'
                     }`}
                     onClick={() => setMode('longBreak')}
+                    style={mode === 'longBreak' ? {backgroundColor: modeColors.longBreak.bg, color: modeColors.longBreak.text} : {}}
                   >
                     <Brain className="h-4 w-4" />
                     <span>Long Break</span>
@@ -245,12 +291,12 @@ export function PomodoroTimer() {
                       />
                       {/* Progress circle */}
                       <circle
-                        className={getModeColor()}
+                        className="text-current"
                         strokeWidth="3"
                         strokeDasharray="283"
                         strokeDashoffset={283 - (283 * calculateProgress()) / 100}
                         strokeLinecap="round"
-                        stroke="currentColor"
+                        stroke={modeColors[mode].bg}
                         fill="transparent"
                         r="45"
                         cx="50"
@@ -275,6 +321,7 @@ export function PomodoroTimer() {
                   >
                     <span className="text-sm text-muted-foreground">
                       {getTimerStatusText()}
+                      {autoStartEnabled && !isRunning && " • Auto-start enabled"}
                     </span>
                   </motion.div>
                 </motion.div>
@@ -287,15 +334,11 @@ export function PomodoroTimer() {
                     onClick={startTimer} 
                     className="gap-2 min-w-[120px] transition-all duration-300"
                     size="lg"
-                    variant={
-                      mode === 'pomodoro' ? 'default' : 
-                      mode === 'shortBreak' ? 'secondary' : 'secondary'
-                    }
+                    variant="default"
                     style={{
-                      backgroundColor: mode === 'pomodoro' ? 'var(--red-500)' : 
-                                      mode === 'shortBreak' ? 'var(--green-500)' : 'var(--blue-500)',
-                      color: 'white',
-                      transition: 'all 0.3s ease'
+                      backgroundColor: modeColors[mode].bg,
+                      color: modeColors[mode].text,
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                     }}
                   >
                     <Play className="h-5 w-5" />
@@ -352,7 +395,7 @@ export function PomodoroTimer() {
               <div>
                 <h3 className="text-sm font-medium mb-1">Current Mode</h3>
                 <div className="flex items-center gap-2">
-                  <div className={`h-3 w-3 rounded-full ${getModeBgColor()}`}></div>
+                  <div style={{ backgroundColor: modeColors[mode].bg }} className="h-3 w-3 rounded-full"></div>
                   <span className="capitalize">{mode}</span>
                 </div>
               </div>
@@ -371,6 +414,25 @@ export function PomodoroTimer() {
                   <div className="text-muted-foreground">Long Break After:</div>
                   <div>{longBreakInterval} sessions</div>
                 </div>
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-medium mb-2">Auto-Start Sessions</h3>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {autoStartEnabled ? 'Enabled' : 'Disabled'}
+                  </span>
+                  <Switch
+                    checked={autoStartEnabled}
+                    onCheckedChange={toggleAutoStart}
+                    aria-label="Toggle auto-start"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {autoStartEnabled 
+                    ? 'Sessions will start automatically after completion' 
+                    : 'Sessions require manual start'}
+                </p>
               </div>
               
               <Button 
@@ -410,7 +472,7 @@ export function PomodoroTimer() {
                     <Label htmlFor="pomodoro-time">Pomodoro Duration: {localPomodoroTime} min</Label>
                     <Input 
                       id="pomodoro-time"
-                      className="w-full bg-background/60" 
+                      className="w-full bg-background/60 no-spinners" 
                       type="number" 
                       min={5} 
                       max={60}
@@ -423,7 +485,7 @@ export function PomodoroTimer() {
                     <Label htmlFor="short-break-time">Short Break: {localShortBreakTime} min</Label>
                     <Input 
                       id="short-break-time"
-                      className="w-full bg-background/60" 
+                      className="w-full bg-background/60 no-spinners" 
                       type="number" 
                       min={1} 
                       max={15}
@@ -438,7 +500,7 @@ export function PomodoroTimer() {
                     <Label htmlFor="long-break-time">Long Break: {localLongBreakTime} min</Label>
                     <Input 
                       id="long-break-time"
-                      className="w-full bg-background/60" 
+                      className="w-full bg-background/60 no-spinners" 
                       type="number" 
                       min={10} 
                       max={30}
@@ -451,7 +513,7 @@ export function PomodoroTimer() {
                     <Label htmlFor="long-break-interval">Long Break Interval: Every {localLongBreakInterval} sessions</Label>
                     <Input 
                       id="long-break-interval"
-                      className="w-full bg-background/60" 
+                      className="w-full bg-background/60 no-spinners" 
                       type="number" 
                       min={2} 
                       max={8}

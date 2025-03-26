@@ -11,14 +11,16 @@ export interface TimerState {
   isRunning: boolean;
   timeLeft: number;
   sessionsCompleted: number;
-  startTime: number;
+  startTime?: number;
   endTime: number;
   settings: {
     pomodoroTime: number;
     shortBreakTime: number;
     longBreakTime: number;
     longBreakInterval: number;
+    autoStartEnabled: boolean;
   };
+  lastSaved: number;
 }
 
 interface PomodoroContextType {
@@ -28,6 +30,7 @@ interface PomodoroContextType {
   sessionsCompleted: number;
   soundEnabled: boolean;
   showFloatingTimer: boolean;
+  autoStartEnabled: boolean;
   pomodoroTime: number;
   shortBreakTime: number;
   longBreakTime: number;
@@ -37,6 +40,7 @@ interface PomodoroContextType {
   resetTimer: () => void;
   completeTimer: () => void;
   toggleSound: () => void;
+  toggleAutoStart: () => void;
   setShowFloatingTimer: (show: boolean) => void;
   setMode: (mode: 'pomodoro' | 'shortBreak' | 'longBreak') => void;
   updateSettings: (settings: {
@@ -66,6 +70,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showFloatingTimer, setShowFloatingTimer] = useState(false);
   const [isOnPomodoroPage, setIsOnPomodoroPage] = useState(false);
+  const [autoStartEnabled, setAutoStartEnabled] = useState(true);
   
   // Settings
   const [pomodoroTime, setPomodoroTime] = useState(25);
@@ -82,6 +87,18 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
   // Initialize timer and request notification permission
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      // Load auto-start preference from localStorage first for immediate use
+      const savedAutoStart = localStorage.getItem('pomodoroAutoStart');
+      if (savedAutoStart !== null) {
+        try {
+          const parsedValue = JSON.parse(savedAutoStart);
+          setAutoStartEnabled(parsedValue);
+          console.log('Loaded auto-start setting from localStorage:', parsedValue);
+        } catch (e) {
+          console.error('Error parsing auto-start setting:', e);
+        }
+      }
+      
       // Check notification permission
       if (Notification.permission !== 'denied') {
         Notification.requestPermission().then(permission => {
@@ -117,6 +134,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
             shortBreakTime: number;
             longBreakTime: number;
             longBreakInterval: number;
+            autoStartEnabled?: boolean;
           };
           syncTimestamp?: number;
         }) => {
@@ -148,6 +166,10 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
             setShortBreakTime(data.settings.shortBreakTime);
             setLongBreakTime(data.settings.longBreakTime);
             setLongBreakInterval(data.settings.longBreakInterval);
+            if (data.settings.autoStartEnabled !== undefined) {
+              setAutoStartEnabled(data.settings.autoStartEnabled);
+              console.log('Updated auto-start from server sync:', data.settings.autoStartEnabled);
+            }
           }
           
           // Sync worker with precise time
@@ -156,6 +178,20 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
               action: 'sync',
               secondsLeft: preciseTimeLeft
             });
+          }
+        });
+        
+        // Listen for real-time stats updates
+        socketRef.current.on('pomodoroStatsUpdate', (data: {
+          userId: string;
+          mode: 'pomodoro' | 'shortBreak' | 'longBreak';
+          sessionsCompleted: number;
+          isRunning: boolean;
+        }) => {
+          // Only update if this is for another user (our own updates come through pomodoroStateSync)
+          if (data.userId !== user.id) {
+            // We only need to update team stats or global stats, not our timer
+            console.log('Received stats update from another user:', data);
           }
         });
       }
@@ -168,7 +204,16 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       
       // Start worker for background timing
       if (typeof Worker !== 'undefined') {
-        startTimerWorker();
+        console.log('Initializing timer worker');
+        const workerInitialized = startTimerWorker();
+        
+        // If initial worker creation failed, retry after a delay
+        if (!workerInitialized) {
+          setTimeout(() => {
+            console.log('Retrying worker initialization');
+            startTimerWorker();
+          }, 500);
+        }
       }
     }
     
@@ -178,6 +223,9 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       }
       if (socketRef.current) {
         socketRef.current.off('pomodoroStateSync');
+        socketRef.current.off('pomodoroStatsUpdate');
+        socketRef.current.off('notification');
+        socketRef.current.off('pomodoroCompleted');
         socketRef.current.disconnect();
       }
       if (workerRef.current) {
@@ -190,6 +238,12 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
   // Start worker for background timing
   const startTimerWorker = () => {
     try {
+      // If worker already exists, terminate it first to prevent duplicates
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
+      }
+      
       // Create a blob URL for the worker script
       const workerCode = `
         let timerInterval = null;
@@ -229,19 +283,23 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
           }, 100); // Check every 100ms for greater precision
         }
         
+        // Handle messages from main thread
         self.addEventListener('message', (e) => {
           const { action, secondsLeft } = e.data;
           
           if (action === 'start' && secondsLeft) {
+            console.log('Worker: Starting timer with', secondsLeft, 'seconds');
             // Start a new high-precision timer with the given seconds
             startHighPrecisionTimer(secondsLeft * 1000);
           } else if (action === 'stop') {
+            console.log('Worker: Stopping timer');
             // Stop the timer
             if (timerInterval) {
               clearInterval(timerInterval);
               timerInterval = null;
             }
           } else if (action === 'sync' && secondsLeft) {
+            console.log('Worker: Syncing timer with', secondsLeft, 'seconds');
             // Sync timer with remaining seconds
             if (timerInterval) {
               clearInterval(timerInterval);
@@ -249,6 +307,9 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
             startHighPrecisionTimer(secondsLeft * 1000);
           }
         });
+        
+        // Send ready message
+        self.postMessage({ type: 'ready' });
       `;
       
       const blob = new Blob([workerCode], { type: 'application/javascript' });
@@ -266,22 +327,30 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
           setTimeLeft(timeLeft);
         } else if (type === 'complete') {
           // Timer complete
+          console.log('Worker sent complete signal, current mode:', mode);
           completeTimer();
+        } else if (type === 'ready') {
+          console.log('Worker is ready, current mode:', mode, 'running:', isRunning);
+          
+          // Start the worker if timer is already running
+          if (isRunning) {
+            console.log('Timer is running, sending start message to worker with', timeLeft, 'seconds');
+            workerRef.current?.postMessage({ 
+              action: 'start', 
+              secondsLeft: timeLeft 
+            });
+          }
         }
       });
       
-      // Start the worker if timer is already running
-      if (isRunning) {
-        workerRef.current.postMessage({ 
-          action: 'start', 
-          secondsLeft: timeLeft 
-        });
-      }
-      
       // Clean up URL
       URL.revokeObjectURL(workerUrl);
+      
+      console.log('Timer worker started successfully');
+      return true;
     } catch (error) {
       console.error('Error starting worker:', error);
+      return false;
     }
   };
 
@@ -310,27 +379,39 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
   const saveTimerState = () => {
     if (typeof window === 'undefined') return;
     
-    const now = Date.now();
-    const state: TimerState = {
-      mode,
-      isRunning,
-      timeLeft,
-      sessionsCompleted,
-      startTime: now,
-      endTime: isRunning ? now + (timeLeft * 1000) : 0,
-      settings: {
-        pomodoroTime,
-        shortBreakTime,
-        longBreakTime,
-        longBreakInterval
+    try {
+      const now = Date.now();
+      const endTime = isRunning ? now + (timeLeft * 1000) : 0;
+      
+      const timerState: TimerState = {
+        mode,
+        isRunning,
+        timeLeft,
+        endTime,
+        sessionsCompleted,
+        startTime: isRunning ? now : undefined,
+        settings: {
+          pomodoroTime,
+          shortBreakTime,
+          longBreakTime,
+          longBreakInterval,
+          autoStartEnabled,
+        },
+        lastSaved: now,
+      };
+      
+      localStorage.setItem('pomodoroState', JSON.stringify(timerState));
+      
+      // Send to server if user is logged in
+      if (user?.id && socketRef.current) {
+        socketRef.current.emit('pomodoroStateUpdate', {
+          userId: user.id,
+          ...timerState,
+          syncAcrossDevices: true
+        });
       }
-    };
-    
-    localStorage.setItem('pomodoroState', JSON.stringify(state));
-    
-    // Sync with server if user is logged in
-    if (user) {
-      syncWithServer(state);
+    } catch (error) {
+      console.error('Error saving timer state:', error);
     }
   };
   
@@ -363,31 +444,39 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     }
   };
   
-  // Notify server about completed session
-  const notifyServerOfCompletion = async (currentMode: 'pomodoro' | 'shortBreak' | 'longBreak', nextMode: 'pomodoro' | 'shortBreak' | 'longBreak') => {
-    if (!user) return;
+  // Function to notify server when a session is completed
+  const notifyServerOfCompletion = (currentMode: 'pomodoro' | 'shortBreak' | 'longBreak', nextMode: 'pomodoro' | 'shortBreak' | 'longBreak') => {
+    if (!user?.id || !socketRef.current) return;
+    
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
     
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      
-      const response = await fetch(`${API_URL}/api/pomodoro/complete`, {
+      fetch(`${API_URL}/api/pomodoro/complete`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           userId: user.id,
           mode: currentMode,
           newMode: nextMode,
-          sessionsCompleted: currentMode === 'pomodoro' ? sessionsCompleted + 1 : sessionsCompleted
-        })
+          sessionsCompleted: currentMode === 'pomodoro' ? sessionsCompleted + 1 : sessionsCompleted,
+          autoStart: autoStartEnabled // Pass the auto-start setting
+        }),
       });
       
-      if (!response.ok) {
-        throw new Error('Failed to notify server');
-      }
+      // Also emit via socket for immediate notification
+      socketRef.current.emit('pomodoroCompleted', {
+        userId: user.id,
+        userName: user.name || user.email,
+        mode: currentMode,
+        newMode: nextMode,
+        sessionsCompleted: currentMode === 'pomodoro' ? sessionsCompleted + 1 : sessionsCompleted,
+        autoStart: autoStartEnabled, // Pass the auto-start setting
+        timestamp: Date.now()
+      });
     } catch (error) {
-      console.error('Error notifying server:', error);
+      console.error('Error notifying server of completion:', error);
     }
   };
 
@@ -401,23 +490,37 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       
       const state: TimerState = JSON.parse(savedState);
       
+      // Validate settings to ensure they have reasonable values
+      const validatedSettings = {
+        pomodoroTime: state.settings?.pomodoroTime > 0 ? state.settings.pomodoroTime : 25,
+        shortBreakTime: state.settings?.shortBreakTime > 0 ? state.settings.shortBreakTime : 5,
+        longBreakTime: state.settings?.longBreakTime > 0 ? state.settings.longBreakTime : 15,
+        longBreakInterval: state.settings?.longBreakInterval > 0 ? state.settings.longBreakInterval : 4,
+        autoStartEnabled: state.settings?.autoStartEnabled !== undefined ? state.settings.autoStartEnabled : true
+      };
+      
+      // Load settings first to ensure timer calculations are correct
+      setPomodoroTime(validatedSettings.pomodoroTime);
+      setShortBreakTime(validatedSettings.shortBreakTime);
+      setLongBreakTime(validatedSettings.longBreakTime);
+      setLongBreakInterval(validatedSettings.longBreakInterval);
+      setAutoStartEnabled(validatedSettings.autoStartEnabled);
+      
+      // Set mode
+      setMode(state.mode || 'pomodoro');
+      
+      // Set sessions completed
+      setSessionsCompleted(state.sessionsCompleted || 0);
+      
       // Check if there's an active timer
       if (state.isRunning && state.endTime > Date.now()) {
         // Calculate remaining time
         const remainingMs = state.endTime - Date.now();
-        const remainingSec = Math.ceil(remainingMs / 1000);
+        const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
         
-        // Restore state
-        setMode(state.mode);
+        // Start the timer with the calculated remaining time
         setIsRunning(true);
         setTimeLeft(remainingSec);
-        setSessionsCompleted(state.sessionsCompleted);
-        
-        // Restore settings
-        setPomodoroTime(state.settings.pomodoroTime);
-        setShortBreakTime(state.settings.shortBreakTime);
-        setLongBreakTime(state.settings.longBreakTime);
-        setLongBreakInterval(state.settings.longBreakInterval);
         
         // Show floating timer if not on pomodoro page
         if (!isOnPomodoroPage) {
@@ -425,16 +528,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
         }
       } else if (state.isRunning && state.endTime <= Date.now()) {
         // Timer should have completed while away
-        // Restore settings and session count, but handle completion
-        setMode(state.mode);
         setIsRunning(false);
-        setSessionsCompleted(state.sessionsCompleted);
-        
-        // Restore settings
-        setPomodoroTime(state.settings.pomodoroTime);
-        setShortBreakTime(state.settings.shortBreakTime);
-        setLongBreakTime(state.settings.longBreakTime);
-        setLongBreakInterval(state.settings.longBreakInterval);
         
         // Determine what happened while away
         if (state.mode === 'pomodoro') {
@@ -443,12 +537,12 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
           const newSessionsCompleted = state.sessionsCompleted + 1;
           setSessionsCompleted(newSessionsCompleted);
           
-          if (newSessionsCompleted % state.settings.longBreakInterval === 0) {
+          if (newSessionsCompleted % validatedSettings.longBreakInterval === 0) {
             setMode('longBreak');
-            setTimeLeft(state.settings.longBreakTime * 60);
+            setTimeLeft(validatedSettings.longBreakTime * 60);
           } else {
             setMode('shortBreak');
-            setTimeLeft(state.settings.shortBreakTime * 60);
+            setTimeLeft(validatedSettings.shortBreakTime * 60);
           }
           
           // Send notification
@@ -456,31 +550,32 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
         } else {
           // Break completed while away
           setMode('pomodoro');
-          setTimeLeft(state.settings.pomodoroTime * 60);
+          setTimeLeft(validatedSettings.pomodoroTime * 60);
           
           // Send notification
           showCompletionNotification('Break Complete!', 'Your break has ended. Ready to focus again?');
         }
       } else {
-        // No active timer, but restore settings and mode
-        setPomodoroTime(state.settings.pomodoroTime);
-        setShortBreakTime(state.settings.shortBreakTime);
-        setLongBreakTime(state.settings.longBreakTime);
-        setLongBreakInterval(state.settings.longBreakInterval);
-        setMode(state.mode);
-        setSessionsCompleted(state.sessionsCompleted);
-        
-        // Set appropriate time based on mode
+        // No active timer, set appropriate time based on mode
         if (state.mode === 'pomodoro') {
-          setTimeLeft(state.settings.pomodoroTime * 60);
+          setTimeLeft(validatedSettings.pomodoroTime * 60);
         } else if (state.mode === 'shortBreak') {
-          setTimeLeft(state.settings.shortBreakTime * 60);
+          setTimeLeft(validatedSettings.shortBreakTime * 60);
         } else {
-          setTimeLeft(state.settings.longBreakTime * 60);
+          setTimeLeft(validatedSettings.longBreakTime * 60);
         }
       }
     } catch (error) {
       console.error('Error loading timer state:', error);
+      // If there's an error, reset to defaults
+      setMode('pomodoro');
+      setTimeLeft(25 * 60);
+      setIsRunning(false);
+      setSessionsCompleted(0);
+      setPomodoroTime(25);
+      setShortBreakTime(5);
+      setLongBreakTime(15);
+      setLongBreakInterval(4);
     }
   };
 
@@ -645,11 +740,45 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     saveTimerState();
   }, [mode, pomodoroTime, shortBreakTime, longBreakTime]);
 
+  // Effect to update timer when settings change
+  useEffect(() => {
+    // Only update the timer duration if the timer isn't running
+    if (!isRunning) {
+      let newTimeLeft = timeLeft;
+      let shouldUpdate = false;
+      
+      if (mode === 'pomodoro') {
+        newTimeLeft = pomodoroTime * 60;
+        shouldUpdate = true;
+        console.log(`Updating focus time: ${pomodoroTime} min (${newTimeLeft} seconds)`);
+      } else if (mode === 'shortBreak') {
+        newTimeLeft = shortBreakTime * 60;
+        shouldUpdate = true;
+        console.log(`Updating short break time: ${shortBreakTime} min (${newTimeLeft} seconds)`);
+      } else if (mode === 'longBreak') {
+        newTimeLeft = longBreakTime * 60;
+        shouldUpdate = true;
+        console.log(`Updating long break time: ${longBreakTime} min (${newTimeLeft} seconds)`);
+      }
+      
+      if (shouldUpdate && newTimeLeft !== timeLeft) {
+        console.log(`Setting timeLeft from ${timeLeft} to ${newTimeLeft} seconds`);
+        setTimeLeft(newTimeLeft);
+      }
+    }
+    
+    // Save state with updated settings
+    saveTimerState();
+  }, [pomodoroTime, shortBreakTime, longBreakTime, longBreakInterval, mode]);
+
   // Effect to control worker when running state changes
   useEffect(() => {
     if (workerRef.current) {
       if (isRunning) {
-        workerRef.current.postMessage({ action: 'start' });
+        workerRef.current.postMessage({ 
+          action: 'start',
+          secondsLeft: timeLeft 
+        });
       } else {
         workerRef.current.postMessage({ action: 'stop' });
       }
@@ -662,7 +791,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     if (isRunning && !isOnPomodoroPage) {
       setShowFloatingTimer(true);
     }
-  }, [isRunning, isOnPomodoroPage]);
+  }, [isRunning, isOnPomodoroPage, timeLeft]);
 
   // Effect to show/hide floating timer when navigating between pages
   useEffect(() => {
@@ -692,33 +821,72 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
 
   // Start the timer
   const startTimer = () => {
+    console.log('Starting timer with', timeLeft, 'seconds left');
     setIsRunning(true);
     
     // Ensure end time is updated for persistence
     const now = Date.now();
     const endTimeValue = now + (timeLeft * 1000);
     
-    // Make sure worker is running
-    if (workerRef.current) {
-      // Stop first to ensure clean state
-      workerRef.current.postMessage({ action: 'stop' });
-      // Then restart with current timeLeft value
-      setTimeout(() => {
-        workerRef.current?.postMessage({ 
-          action: 'start', 
-          secondsLeft: timeLeft 
-        });
-      }, 0);
-    } else if (typeof Worker !== 'undefined') {
-      // Worker not initialized - recreate it
-      startTimerWorker();
-      setTimeout(() => {
-        workerRef.current?.postMessage({ 
-          action: 'start', 
-          secondsLeft: timeLeft 
-        });
-      }, 50); // Give the worker enough time to initialize
+    // Initialize worker if it doesn't exist or recreate it if it was terminated
+    let workerCreated = false;
+    if (!workerRef.current) {
+      console.log('Creating new worker for timer');
+      workerCreated = startTimerWorker();
+      
+      // If worker creation failed, try one more time after a short delay
+      if (!workerCreated) {
+        setTimeout(() => {
+          console.log('Retry creating worker');
+          startTimerWorker();
+        }, 100);
+      }
     }
+    
+    // Use a timeout to ensure the worker is ready before sending messages
+    setTimeout(() => {
+      // Make sure worker is running
+      if (workerRef.current) {
+        // Stop first to ensure clean state
+        workerRef.current.postMessage({ action: 'stop' });
+        
+        // Then restart with current timeLeft value
+        setTimeout(() => {
+          if (workerRef.current) {
+            console.log('Starting worker in startTimer with', timeLeft, 'seconds');
+            workerRef.current.postMessage({ 
+              action: 'start', 
+              secondsLeft: timeLeft 
+            });
+          } else {
+            console.warn('Worker not available after initialization');
+          }
+        }, 50);
+      } else {
+        console.warn('No worker available for timer');
+        
+        // As a fallback, set up an interval directly
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+        
+        timerRef.current = setInterval(() => {
+          setTimeLeft(prev => {
+            if (prev <= 1) {
+              if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+              }
+              
+              // Call completeTimer after a small delay to ensure state is updated
+              setTimeout(() => completeTimer(), 0);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+    }, workerCreated ? 50 : 200); // Longer delay if worker was just created
     
     // Save state immediately
     saveTimerState();
@@ -756,6 +924,8 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
 
   // Complete the timer and transition to next mode
   const completeTimer = () => {
+    console.log('Completing timer in mode:', mode);
+    
     // Stop all timers
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -783,9 +953,11 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       } else {
         nextMode = 'shortBreak';
       }
+      console.log(`Pomodoro completed. Next mode: ${nextMode}`);
     } else {
       // After a break, go back to pomodoro
       nextMode = 'pomodoro';
+      console.log(`Break completed. Next mode: ${nextMode}`);
     }
     
     // Show notification
@@ -797,15 +969,135 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     
     showCompletionNotification(title, message);
     
-    // Notify server of completion
-    notifyServerOfCompletion(mode, nextMode);
+    // Make sure we use the latest setting values
+    const currentPomodoroTime = pomodoroTime;
+    const currentShortBreakTime = shortBreakTime;
+    const currentLongBreakTime = longBreakTime;
     
-    // Update mode
+    // Calculate the correct time based on next mode using the current settings
+    const nextDuration = nextMode === 'pomodoro'
+      ? currentPomodoroTime * 60
+      : nextMode === 'shortBreak'
+        ? currentShortBreakTime * 60
+        : currentLongBreakTime * 60;
+    
+    console.log(`Setting new duration: ${nextDuration} seconds for ${nextMode} mode`);
+    
+    // First, change mode
     setMode(nextMode);
-    setIsRunning(false);
     
-    // Save updated state
-    saveTimerState();
+    // Set timeLeft even if not auto-starting
+    setTimeLeft(nextDuration);
+    
+    // Auto-start next session if enabled, otherwise stop the timer
+    if (autoStartEnabled) {
+      console.log('Auto-start is enabled, starting next session');
+      // Mark as running
+      setIsRunning(true);
+      
+      // Notify server of completion with auto-start flag
+      notifyServerOfCompletion(mode, nextMode);
+      
+      // A bit longer delay to ensure state updates are completed
+      setTimeout(() => {
+        try {
+          // Double-check the worker still exists
+          if (workerRef.current) {
+            // Stop any existing timer to be safe
+            workerRef.current.postMessage({ action: 'stop' });
+            
+            // Then start a new one with the correct duration
+            setTimeout(() => {
+              if (workerRef.current) {
+                console.log('Starting worker with duration:', nextDuration);
+                workerRef.current.postMessage({
+                  action: 'start',
+                  secondsLeft: nextDuration
+                });
+              } else {
+                console.error('Worker was lost during auto-start - falling back to interval');
+                startTimerDirectly(nextDuration);
+              }
+            }, 50);
+          } else {
+            console.log('No worker available, recreating or falling back to interval');
+            // Try to recreate the worker
+            if (typeof Worker !== 'undefined') {
+              // If worker was terminated, recreate it
+              console.log('Recreating worker for auto-start');
+              const workerInitialized = startTimerWorker();
+              
+              if (workerInitialized) {
+                setTimeout(() => {
+                  if (workerRef.current) {
+                    console.log('Starting recreated worker with duration:', nextDuration);
+                    workerRef.current.postMessage({
+                      action: 'start',
+                      secondsLeft: nextDuration
+                    });
+                  } else {
+                    console.error('Recreated worker lost - falling back to interval');
+                    startTimerDirectly(nextDuration);
+                  }
+                }, 100);
+              } else {
+                console.error('Failed to recreate worker - falling back to interval');
+                startTimerDirectly(nextDuration);
+              }
+            } else {
+              // Fallback to direct interval if Web Workers not supported
+              console.log('Web Workers not supported - using interval fallback');
+              startTimerDirectly(nextDuration);
+            }
+          }
+        } catch (error) {
+          console.error('Error during auto-start:', error);
+          // Fallback to direct interval
+          startTimerDirectly(nextDuration);
+        }
+        
+        // Save state after everything is set up
+        saveTimerState();
+      }, 100);
+    } else {
+      // If not auto-starting, stop the timer
+      setIsRunning(false);
+      
+      // Notify server of completion without auto-start
+      notifyServerOfCompletion(mode, nextMode);
+      
+      // Save state
+      setTimeout(() => saveTimerState(), 50);
+    }
+  };
+  
+  // Fallback direct interval timer when worker fails
+  const startTimerDirectly = (durationSeconds: number) => {
+    console.log('Starting direct interval timer for', durationSeconds, 'seconds');
+    
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+    
+    // Set initial time
+    setTimeLeft(durationSeconds);
+    
+    // Use setInterval as a fallback
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        const newTime = prev - 1;
+        if (newTime <= 0) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          // Schedule completion outside of state update
+          setTimeout(() => completeTimer(), 0);
+          return 0;
+        }
+        return newTime;
+      });
+    }, 1000);
   };
 
   // Calculate progress percentage
@@ -839,23 +1131,95 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     longBreakTime?: number;
     longBreakInterval?: number;
   }) => {
-    if (settings.pomodoroTime !== undefined) setPomodoroTime(settings.pomodoroTime);
-    if (settings.shortBreakTime !== undefined) setShortBreakTime(settings.shortBreakTime);
-    if (settings.longBreakTime !== undefined) setLongBreakTime(settings.longBreakTime);
-    if (settings.longBreakInterval !== undefined) setLongBreakInterval(settings.longBreakInterval);
+    console.log('Updating settings:', settings);
     
-    // Update timer based on current mode
+    // Store old settings for comparison
+    const oldPomodoroTime = pomodoroTime;
+    const oldShortBreakTime = shortBreakTime;
+    const oldLongBreakTime = longBreakTime;
+    
+    // Update settings
+    let pomodoroUpdated = false;
+    let shortBreakUpdated = false;
+    let longBreakUpdated = false;
+    
+    if (settings.pomodoroTime !== undefined && settings.pomodoroTime !== oldPomodoroTime) {
+      setPomodoroTime(settings.pomodoroTime);
+      pomodoroUpdated = true;
+      console.log(`Updated pomodoro time to ${settings.pomodoroTime} minutes`);
+    }
+    
+    if (settings.shortBreakTime !== undefined && settings.shortBreakTime !== oldShortBreakTime) {
+      setShortBreakTime(settings.shortBreakTime);
+      shortBreakUpdated = true;
+      console.log(`Updated short break time to ${settings.shortBreakTime} minutes`);
+    }
+    
+    if (settings.longBreakTime !== undefined && settings.longBreakTime !== oldLongBreakTime) {
+      setLongBreakTime(settings.longBreakTime);
+      longBreakUpdated = true;
+      console.log(`Updated long break time to ${settings.longBreakTime} minutes`);
+    }
+    
+    if (settings.longBreakInterval !== undefined) {
+      setLongBreakInterval(settings.longBreakInterval);
+      console.log(`Updated long break interval to ${settings.longBreakInterval} sessions`);
+    }
+    
+    // Immediately update timer if not running
     if (!isRunning) {
-      if (mode === 'pomodoro' && settings.pomodoroTime) {
-        setTimeLeft(settings.pomodoroTime * 60);
-      } else if (mode === 'shortBreak' && settings.shortBreakTime) {
-        setTimeLeft(settings.shortBreakTime * 60);
-      } else if (mode === 'longBreak' && settings.longBreakTime) {
-        setTimeLeft(settings.longBreakTime * 60);
+      // Update time based on current mode
+      if (mode === 'pomodoro' && pomodoroUpdated) {
+        const newDuration = settings.pomodoroTime! * 60;
+        console.log(`Setting pomodoro timeLeft to ${newDuration} seconds`);
+        setTimeLeft(newDuration);
+      } else if (mode === 'shortBreak' && shortBreakUpdated) {
+        const newDuration = settings.shortBreakTime! * 60;
+        console.log(`Setting short break timeLeft to ${newDuration} seconds`);
+        setTimeLeft(newDuration);
+      } else if (mode === 'longBreak' && longBreakUpdated) {
+        const newDuration = settings.longBreakTime! * 60;
+        console.log(`Setting long break timeLeft to ${newDuration} seconds`);
+        setTimeLeft(newDuration);
       }
     }
     
-    saveTimerState();
+    // Also need to update worker with new time if running
+    if (isRunning && workerRef.current) {
+      let shouldRestart = false;
+      let newDuration = 0;
+      
+      if (mode === 'pomodoro' && pomodoroUpdated) {
+        shouldRestart = true;
+        newDuration = settings.pomodoroTime! * 60;
+        console.log(`Restarting pomodoro with new duration: ${newDuration} seconds`);
+      } else if (mode === 'shortBreak' && shortBreakUpdated) {
+        shouldRestart = true;
+        newDuration = settings.shortBreakTime! * 60;
+        console.log(`Restarting short break with new duration: ${newDuration} seconds`);
+      } else if (mode === 'longBreak' && longBreakUpdated) {
+        shouldRestart = true;
+        newDuration = settings.longBreakTime! * 60;
+        console.log(`Restarting long break with new duration: ${newDuration} seconds`);
+      }
+      
+      if (shouldRestart) {
+        // Stop current timer
+        pauseTimer();
+        
+        // Update timeLeft
+        setTimeLeft(newDuration);
+        
+        // Small delay to ensure timeLeft is updated
+        setTimeout(() => {
+          // Restart timer with new duration
+          startTimer();
+        }, 50);
+      }
+    }
+    
+    // Save state with updated settings
+    setTimeout(() => saveTimerState(), 100);
   };
 
   // Toggle sound
@@ -889,6 +1253,35 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => saveTimerState(), 0);
   };
 
+  // Add function to toggle auto-start
+  const toggleAutoStart = () => {
+    const newValue = !autoStartEnabled;
+    console.log('Toggling auto-start to:', newValue);
+    
+    // Update local state
+    setAutoStartEnabled(newValue);
+    
+    // Save preference to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pomodoroAutoStart', JSON.stringify(newValue));
+    }
+    
+    // Update timer state to include this setting
+    setTimeout(() => {
+      saveTimerState();
+      
+      // If user is logged in, notify server of the setting change directly
+      if (user?.id && socketRef.current) {
+        socketRef.current.emit('pomodoroSettingUpdate', {
+          userId: user.id,
+          settings: {
+            autoStartEnabled: newValue
+          }
+        });
+      }
+    }, 0);
+  };
+
   const value = {
     mode,
     isRunning,
@@ -896,6 +1289,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     sessionsCompleted,
     soundEnabled,
     showFloatingTimer,
+    autoStartEnabled,
     pomodoroTime,
     shortBreakTime,
     longBreakTime,
@@ -905,6 +1299,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     resetTimer,
     completeTimer,
     toggleSound,
+    toggleAutoStart,
     setShowFloatingTimer,
     updateSettings,
     formatTime,
