@@ -8,6 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 // Import routes
 const notificationRoutes = require('./routes/notification-routes');
 const habitRoutes = require('./routes/habit-routes');
+const pomodoroRoutes = require('./routes/pomodoro-routes');
 
 // Create Express app
 const app = express();
@@ -39,10 +40,14 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Connected users map
 const connectedUsers = new Map();
 
+// Active pomodoro sessions map
+const activeSessions = new Map();
+
 // Make io, connectedUsers, and supabase available to routes
 app.set('io', io);
 app.set('connectedUsers', connectedUsers);
 app.set('supabase', supabase);
+app.set('activeSessions', activeSessions);
 
 // Socket.io connection handler
 io.on('connection', (socket) => {
@@ -146,11 +151,156 @@ io.on('connection', (socket) => {
     // Broadcast to all users in the challenge
     socket.broadcast.emit('challengeUpdated', data);
   });
+  
+  // Handle pomodoro started event
+  socket.on('pomodoroStarted', (data) => {
+    console.log('Received pomodoro started event:', data);
+    
+    // If team pomodoro is enabled, broadcast to team members
+    if (data.isTeamPomodoro && Array.isArray(data.teamMembers)) {
+      data.teamMembers.forEach(memberId => {
+        const memberSocketId = connectedUsers.get(memberId);
+        if (memberSocketId && memberSocketId !== socket.id) {
+          io.to(memberSocketId).emit('pomodoroStarted', {
+            ...data,
+            fromTeammate: true
+          });
+        }
+      });
+    }
+  });
+  
+  // Handle pomodoro completion
+  socket.on('pomodoroCompleted', (data) => {
+    console.log('Received pomodoro completion:', data);
+    
+    // Notify user's team members if this is for a team pomodoro
+    if (data.teamId) {
+      const teamMembers = app.get('teams')?.get(data.teamId) || [];
+      
+      teamMembers.forEach(memberId => {
+        // Don't notify the user who completed the pomodoro
+        if (memberId !== data.userId) {
+          const memberSocketId = connectedUsers.get(memberId);
+          if (!memberSocketId) return;
+          
+          // Format specific message based on the mode
+          let messageText;
+          if (data.mode === 'pomodoro') {
+            messageText = `${data.userName || 'A team member'} completed a focus session`;
+          } else if (data.mode === 'shortBreak') {
+            messageText = `${data.userName || 'A team member'} completed a short break`;
+          } else {
+            messageText = `${data.userName || 'A team member'} completed a long break`;
+          }
+          
+          io.to(memberSocketId).emit('notification', {
+            type: 'pomodoro',
+            title: 'Team Pomodoro Update',
+            message: messageText,
+            mode: data.newMode,
+            fromTeammate: true,
+            timestamp: Date.now()
+          });
+        }
+      });
+    }
+    
+    // Store notification in database if requested
+    if (data.saveToDatabase) {
+      let notificationType;
+      let notificationMessage;
+      
+      // Format message based on the mode
+      if (data.mode === 'pomodoro') {
+        notificationType = 'pomodoro_complete';
+        notificationMessage = 'Focus session completed';
+      } else if (data.mode === 'shortBreak') {
+        notificationType = 'short_break_complete';
+        notificationMessage = 'Short break completed';
+      } else {
+        notificationType = 'long_break_complete';
+        notificationMessage = 'Long break completed';
+      }
+      
+      try {
+        supabase
+          .from('notifications')
+          .insert({
+            user_id: data.userId,
+            message: notificationMessage,
+            type: notificationType,
+            related_id: null,
+            is_read: false,
+            metadata: {
+              previousMode: data.mode,
+              newMode: data.newMode,
+              sessionsCompleted: data.sessionsCompleted,
+              timestamp: data.timestamp || Date.now()
+            }
+          })
+          .then(({ error }) => {
+            if (error) {
+              console.error('Error saving pomodoro notification:', error);
+            }
+          });
+      } catch (error) {
+        console.error('Error processing pomodoro notification:', error);
+      }
+    }
+  });
+  
+  // Handle pomodoro state update
+  socket.on('pomodoroStateUpdate', (data) => {
+    console.log('Pomodoro state update:', data);
+    
+    if (!data.userId) {
+      console.warn('Received pomodoroStateUpdate without userId');
+      return;
+    }
+    
+    // Store the session state
+    const activeSessions = app.get('activeSessions') || new Map();
+    
+    activeSessions.set(data.userId, {
+      userId: data.userId,
+      mode: data.mode,
+      timeLeft: data.timeLeft,
+      isRunning: data.isRunning,
+      endTime: data.endTime,
+      sessionsCompleted: data.sessionsCompleted,
+      settings: data.settings,
+      lastUpdated: Date.now()
+    });
+    
+    // Make sure activeSessions is available to routes
+    app.set('activeSessions', activeSessions);
+    
+    // If there are other devices for the same user logged in, sync the state
+    if (data.syncAcrossDevices) {
+      // Find all sockets for this user
+      const userSockets = Array.from(io.sockets.sockets.values())
+        .filter(s => s.id !== socket.id && s.data?.userId === data.userId);
+      
+      // Broadcast state update to other devices of the same user
+      userSockets.forEach(userSocket => {
+        userSocket.emit('pomodoroStateSync', {
+          mode: data.mode,
+          timeLeft: data.timeLeft,
+          isRunning: data.isRunning,
+          endTime: data.endTime,
+          sessionsCompleted: data.sessionsCompleted,
+          settings: data.settings
+        });
+      });
+    }
+  });
 });
 
 // API Routes
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/habits', habitRoutes);
+app.use('/api/pomodoro', pomodoroRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

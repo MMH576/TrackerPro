@@ -11,8 +11,15 @@ import { Toaster } from '@/components/ui/toaster'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'TrackerPro - Track Your Habits',
-  description: 'Track your habits, compete with friends, and stay motivated',
+  title: 'Habit Tracker Pro',
+  description: 'Track your habits and boost your productivity',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '32x32' },
+    ],
+    apple: { url: '/apple-icon.png', type: 'image/png', sizes: '180x180' },
+  },
 }
 
 export default function RootLayout({

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import type React from "react"
 import { CustomHeader } from "@/components/custom-header"
 import { Toaster } from "@/components/ui/toaster"
+import { PomodoroProvider } from "@/contexts/pomodoro-context";
+import { FloatingTimer } from "@/components/floating-timer";
 
 export default function DashboardLayout({
   children,
@@ -39,15 +41,18 @@ export default function DashboardLayout({
   if (!user) return null;
 
   return (
-    <div className="relative min-h-screen bg-background flex flex-col">
-      <CustomHeader />
-      <div className="container mx-auto max-w-6xl flex-1">
-        <main className="p-4">
-          {children}
-        </main>
+    <PomodoroProvider>
+      <div className="relative min-h-screen bg-background flex flex-col">
+        <CustomHeader />
+        <div className="container mx-auto max-w-6xl flex-1">
+          <main className="p-4">
+            {children}
+          </main>
+        </div>
+        <Toaster />
+        <FloatingTimer />
       </div>
-      <Toaster />
-    </div>
+    </PomodoroProvider>
   )
 }
 

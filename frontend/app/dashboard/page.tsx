@@ -19,6 +19,8 @@ import { format, addDays, startOfWeek, eachDayOfInterval } from "date-fns";
 import { Habit } from "@/lib/types";
 import { motion } from "framer-motion";
 import { useToast } from "@/components/ui/use-toast";
+import { PomodoroTimer } from "@/components/pomodoro-timer";
+import { usePomodoroContext } from "@/contexts/pomodoro-context";
 
 export default function DashboardHome() {
   const { user, loading, isDevelopmentMode } = useAuth();
@@ -28,6 +30,16 @@ export default function DashboardHome() {
   const [activeTab, setActiveTab] = useState("habits");
   const [activeFilter, setActiveFilter] = useState("all");
   const [mainTab, setMainTab] = useState("today");
+
+  // Check for URL query parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    
+    if (tabParam && ['habits', 'analytics', 'pomodoro'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, []);
 
   if (loading) {
     return (
@@ -166,22 +178,43 @@ export default function DashboardHome() {
     email: user.email
   } : { id: "", name: "", email: "" };
 
-  // Check for URL query parameters
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get('tab');
-    
-    if (tabParam && ['habits', 'analytics'].includes(tabParam)) {
-      setActiveTab(tabParam);
-    }
-  }, []);
-
   // Load habits data
   useEffect(() => {
     if (user) {
       loadHabits();
     }
   }, [user, loadHabits]);
+
+  // Update URL when tab changes
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    
+    // Update URL query parameter
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', value);
+    window.history.pushState({}, '', url.toString());
+  };
+
+  // Update document title when active tab changes
+  useEffect(() => {
+    // Set document title based on the active tab
+    const titles = {
+      habits: "Habits | Habit Tracker Pro",
+      pomodoro: "Pomodoro Timer | Habit Tracker Pro",
+      analytics: "Analytics | Habit Tracker Pro"
+    };
+    
+    document.title = titles[activeTab as keyof typeof titles] || "Habit Tracker Pro";
+  }, [activeTab]);
+
+  // Connect with Pomodoro context
+  const { setIsOnPomodoroPage } = usePomodoroContext();
+  
+  // Update Pomodoro context when tab changes
+  useEffect(() => {
+    // Update the pomodoro context when the pomodoro tab is active
+    setIsOnPomodoroPage(activeTab === 'pomodoro');
+  }, [activeTab, setIsOnPomodoroPage]);
 
   return (
     <div className="container mx-auto px-4 py-4 md:py-8 max-w-6xl">
@@ -198,9 +231,10 @@ export default function DashboardHome() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="habits">Habits</TabsTrigger>
+          <TabsTrigger value="pomodoro">Pomodoro</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
@@ -262,8 +296,12 @@ export default function DashboardHome() {
           </div>
         </TabsContent>
 
-        <TabsContent value="analytics">
+        <TabsContent value="analytics" className="space-y-4">
           <DashboardAnalytics habits={habits} />
+        </TabsContent>
+
+        <TabsContent value="pomodoro" className="space-y-4">
+          <PomodoroTimer />
         </TabsContent>
       </Tabs>
     </div>
