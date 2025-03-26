@@ -98,6 +98,68 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
         autoConnect: false
       });
 
+      // Setup socket listeners if user is logged in
+      if (user && user.id) {
+        socketRef.current.connect();
+        
+        // Add user ID to socket data
+        socketRef.current.data = { userId: user.id };
+        
+        // Listen for pomodoro state sync from server
+        socketRef.current.on('pomodoroStateSync', (data: {
+          mode: 'pomodoro' | 'shortBreak' | 'longBreak';
+          timeLeft: number;
+          isRunning: boolean;
+          endTime: number;
+          sessionsCompleted?: number;
+          settings?: {
+            pomodoroTime: number;
+            shortBreakTime: number;
+            longBreakTime: number;
+            longBreakInterval: number;
+          };
+          syncTimestamp?: number;
+        }) => {
+          if (!data) return;
+          
+          // Calculate precise time remaining with compensation for network latency
+          const networkLatency = Date.now() - (data.syncTimestamp || Date.now());
+          let preciseTimeLeft = data.timeLeft;
+          
+          // Adjust for time passed during sync if running
+          if (data.isRunning && data.endTime) {
+            const adjustedEndTime = data.endTime - networkLatency;
+            const remainingMs = adjustedEndTime - Date.now();
+            preciseTimeLeft = Math.max(0, Math.ceil(remainingMs / 1000));
+          }
+          
+          // Update local state with synchronized data
+          setMode(data.mode);
+          setTimeLeft(preciseTimeLeft);
+          setIsRunning(data.isRunning);
+          
+          if (data.sessionsCompleted !== undefined) {
+            setSessionsCompleted(data.sessionsCompleted);
+          }
+          
+          // Update settings if provided
+          if (data.settings) {
+            setPomodoroTime(data.settings.pomodoroTime);
+            setShortBreakTime(data.settings.shortBreakTime);
+            setLongBreakTime(data.settings.longBreakTime);
+            setLongBreakInterval(data.settings.longBreakInterval);
+          }
+          
+          // Sync worker with precise time
+          if (workerRef.current && data.isRunning) {
+            workerRef.current.postMessage({
+              action: 'sync',
+              secondsLeft: preciseTimeLeft
+            });
+          }
+        });
+      }
+
       // Load saved timer state
       loadTimerState();
       
@@ -115,6 +177,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
         clearInterval(timerRef.current);
       }
       if (socketRef.current) {
+        socketRef.current.off('pomodoroStateSync');
         socketRef.current.disconnect();
       }
       if (workerRef.current) {
@@ -122,33 +185,68 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [user]);
 
   // Start worker for background timing
   const startTimerWorker = () => {
     try {
       // Create a blob URL for the worker script
       const workerCode = `
-        let interval = null;
-        let lastTickTime = Date.now();
+        let timerInterval = null;
+        let targetTime = 0;
+        let startTime = 0;
+        
+        // High-precision timing with drift compensation
+        function startHighPrecisionTimer(durationMs) {
+          if (timerInterval) {
+            clearInterval(timerInterval);
+          }
+          
+          startTime = Date.now();
+          targetTime = startTime + durationMs;
+          
+          // Use a higher frequency interval (100ms) for more precise tracking
+          timerInterval = setInterval(() => {
+            const now = Date.now();
+            const elapsed = now - startTime;
+            const remaining = Math.max(0, durationMs - elapsed);
+            
+            // Send updates at 1-second boundaries for UI updates
+            if (Math.floor(remaining / 1000) < Math.floor((remaining + 100) / 1000)) {
+              self.postMessage({ 
+                type: 'tick', 
+                timeLeft: Math.ceil(remaining / 1000),
+                elapsed: Math.floor(elapsed / 1000)
+              });
+            }
+            
+            // Check if timer is complete
+            if (now >= targetTime) {
+              clearInterval(timerInterval);
+              timerInterval = null;
+              self.postMessage({ type: 'complete' });
+            }
+          }, 100); // Check every 100ms for greater precision
+        }
         
         self.addEventListener('message', (e) => {
-          const { action, state } = e.data;
+          const { action, secondsLeft } = e.data;
           
-          if (action === 'start') {
-            lastTickTime = Date.now();
-            interval = setInterval(() => {
-              // Send tick message to main thread
-              self.postMessage({ type: 'tick', elapsed: Math.floor((Date.now() - lastTickTime) / 1000) });
-              lastTickTime = Date.now();
-            }, 1000);
+          if (action === 'start' && secondsLeft) {
+            // Start a new high-precision timer with the given seconds
+            startHighPrecisionTimer(secondsLeft * 1000);
           } else if (action === 'stop') {
-            if (interval) {
-              clearInterval(interval);
-              interval = null;
+            // Stop the timer
+            if (timerInterval) {
+              clearInterval(timerInterval);
+              timerInterval = null;
             }
-          } else if (action === 'sync') {
-            lastTickTime = Date.now();
+          } else if (action === 'sync' && secondsLeft) {
+            // Sync timer with remaining seconds
+            if (timerInterval) {
+              clearInterval(timerInterval);
+            }
+            startHighPrecisionTimer(secondsLeft * 1000);
           }
         });
       `;
@@ -161,17 +259,23 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       
       // Set up message handler
       workerRef.current.addEventListener('message', (e) => {
-        const { type, elapsed } = e.data;
+        const { type, timeLeft, elapsed } = e.data;
         
         if (type === 'tick') {
-          // Update timer based on elapsed time
-          updateTimeBasedOnElapsed(elapsed);
+          // Use the precise remaining time sent from the worker
+          setTimeLeft(timeLeft);
+        } else if (type === 'complete') {
+          // Timer complete
+          completeTimer();
         }
       });
       
       // Start the worker if timer is already running
       if (isRunning) {
-        workerRef.current.postMessage({ action: 'start' });
+        workerRef.current.postMessage({ 
+          action: 'start', 
+          secondsLeft: timeLeft 
+        });
       }
       
       // Clean up URL
@@ -181,23 +285,21 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Update time based on elapsed time (for worker)
-  const updateTimeBasedOnElapsed = (elapsed: number) => {
-    setTimeLeft(prevTime => {
-      if (prevTime <= elapsed) {
-        // Timer complete
-        completeTimer();
-        return 0;
-      }
-      return prevTime - elapsed;
-    });
-  };
-
   // Handle visibility change (tab switch or window minimize)
   const handleVisibilityChange = () => {
     if (document.visibilityState === 'visible') {
-      // Synchronize timer when becoming visible again
-      syncTimerWithStorage();
+      // When becoming visible, sync with the current state
+      if (isRunning) {
+        syncTimerWithStorage();
+        
+        // Resync worker timing if running
+        if (workerRef.current) {
+          workerRef.current.postMessage({ 
+            action: 'sync', 
+            secondsLeft: timeLeft 
+          });
+        }
+      }
     } else if (isRunning) {
       // Update last known time before hiding
       saveTimerState();
@@ -391,12 +493,20 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
       const state: TimerState = JSON.parse(savedState);
       
       if (state.isRunning && state.endTime > Date.now()) {
-        // Calculate remaining time
+        // Calculate remaining time with ms precision
         const remainingMs = state.endTime - Date.now();
         const remainingSec = Math.ceil(remainingMs / 1000);
         
-        // Update time
+        // Update time left and resync worker
         setTimeLeft(remainingSec);
+        
+        // Resync worker with precise remaining time
+        if (workerRef.current) {
+          workerRef.current.postMessage({ 
+            action: 'sync', 
+            secondsLeft: remainingSec 
+          });
+        }
       } else if (state.isRunning && state.endTime <= Date.now()) {
         // Timer completed while away
         completeTimer();
@@ -513,6 +623,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
 
   // Effect to update timer when mode changes
   useEffect(() => {
+    // Reset time left when mode changes
     if (mode === 'pomodoro') {
       setTimeLeft(pomodoroTime * 60);
     } else if (mode === 'shortBreak') {
@@ -582,6 +693,35 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
   // Start the timer
   const startTimer = () => {
     setIsRunning(true);
+    
+    // Ensure end time is updated for persistence
+    const now = Date.now();
+    const endTimeValue = now + (timeLeft * 1000);
+    
+    // Make sure worker is running
+    if (workerRef.current) {
+      // Stop first to ensure clean state
+      workerRef.current.postMessage({ action: 'stop' });
+      // Then restart with current timeLeft value
+      setTimeout(() => {
+        workerRef.current?.postMessage({ 
+          action: 'start', 
+          secondsLeft: timeLeft 
+        });
+      }, 0);
+    } else if (typeof Worker !== 'undefined') {
+      // Worker not initialized - recreate it
+      startTimerWorker();
+      setTimeout(() => {
+        workerRef.current?.postMessage({ 
+          action: 'start', 
+          secondsLeft: timeLeft 
+        });
+      }, 50); // Give the worker enough time to initialize
+    }
+    
+    // Save state immediately
+    saveTimerState();
   };
   
   // Pause the timer
@@ -723,6 +863,32 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     setSoundEnabled(!soundEnabled);
   };
 
+  // Enhanced setMode function to handle manual mode switching
+  const handleModeChange = (newMode: 'pomodoro' | 'shortBreak' | 'longBreak') => {
+    // Stop the timer if it's running
+    if (isRunning) {
+      setIsRunning(false);
+      if (workerRef.current) {
+        workerRef.current.postMessage({ action: 'stop' });
+      }
+    }
+    
+    // Set the new mode
+    setMode(newMode);
+    
+    // Update time based on the new mode
+    if (newMode === 'pomodoro') {
+      setTimeLeft(pomodoroTime * 60);
+    } else if (newMode === 'shortBreak') {
+      setTimeLeft(shortBreakTime * 60);
+    } else {
+      setTimeLeft(longBreakTime * 60);
+    }
+    
+    // Save state after mode change
+    setTimeout(() => saveTimerState(), 0);
+  };
+
   const value = {
     mode,
     isRunning,
@@ -746,7 +912,7 @@ export function PomodoroProvider({ children }: { children: React.ReactNode }) {
     getModeColor,
     isOnPomodoroPage,
     setIsOnPomodoroPage,
-    setMode
+    setMode: handleModeChange
   };
 
   return (

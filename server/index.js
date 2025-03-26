@@ -262,35 +262,52 @@ io.on('connection', (socket) => {
     // Store the session state
     const activeSessions = app.get('activeSessions') || new Map();
     
-    activeSessions.set(data.userId, {
+    // Get existing session or create new one
+    const existingSession = activeSessions.get(data.userId) || {};
+    
+    // Calculate precise end time if timer is running
+    let calculatedEndTime = data.endTime;
+    if (data.isRunning && data.timeLeft) {
+      calculatedEndTime = Date.now() + (data.timeLeft * 1000);
+    }
+    
+    // Update with new data, ensuring precision
+    const updatedSession = {
+      ...existingSession,
       userId: data.userId,
-      mode: data.mode,
-      timeLeft: data.timeLeft,
-      isRunning: data.isRunning,
-      endTime: data.endTime,
-      sessionsCompleted: data.sessionsCompleted,
-      settings: data.settings,
+      mode: data.mode || existingSession.mode,
+      timeLeft: data.timeLeft !== undefined ? data.timeLeft : existingSession.timeLeft,
+      isRunning: data.isRunning !== undefined ? data.isRunning : existingSession.isRunning,
+      endTime: calculatedEndTime || existingSession.endTime,
+      sessionsCompleted: data.sessionsCompleted !== undefined ? data.sessionsCompleted : existingSession.sessionsCompleted,
+      settings: data.settings || existingSession.settings,
       lastUpdated: Date.now()
-    });
+    };
+    
+    // Store updated session
+    activeSessions.set(data.userId, updatedSession);
     
     // Make sure activeSessions is available to routes
     app.set('activeSessions', activeSessions);
     
     // If there are other devices for the same user logged in, sync the state
-    if (data.syncAcrossDevices) {
+    if (data.syncAcrossDevices !== false) { // Sync by default unless explicitly disabled
       // Find all sockets for this user
       const userSockets = Array.from(io.sockets.sockets.values())
         .filter(s => s.id !== socket.id && s.data?.userId === data.userId);
       
-      // Broadcast state update to other devices of the same user
+      // Broadcast state update to other devices of the same user with precise timing data
       userSockets.forEach(userSocket => {
+        // Calculate the remaining time based on endTime for precision
+        const remainingMs = updatedSession.endTime - Date.now();
+        const currentTimeLeft = updatedSession.isRunning && remainingMs > 0 
+          ? Math.ceil(remainingMs / 1000) 
+          : updatedSession.timeLeft;
+        
         userSocket.emit('pomodoroStateSync', {
-          mode: data.mode,
-          timeLeft: data.timeLeft,
-          isRunning: data.isRunning,
-          endTime: data.endTime,
-          sessionsCompleted: data.sessionsCompleted,
-          settings: data.settings
+          ...updatedSession,
+          timeLeft: currentTimeLeft,
+          syncTimestamp: Date.now() // Add timestamp for client-side compensation
         });
       });
     }

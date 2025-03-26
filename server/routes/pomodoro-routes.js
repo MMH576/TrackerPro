@@ -51,33 +51,42 @@ router.post('/update', async (req, res) => {
     const io = req.app.get('io');
     const connectedUsers = req.app.get('connectedUsers');
     
-    // Update session in memory
-    activeSessions.set(userId, {
-      mode,
-      timeLeft,
-      isRunning,
-      endTime,
-      sessionsCompleted,
-      settings,
+    // Get existing session or create new one
+    const existingSession = activeSessions.get(userId) || {};
+    
+    // Update session in memory with new values while preserving any existing data
+    const updatedSession = {
+      ...existingSession,
+      mode: mode || existingSession.mode,
+      timeLeft: timeLeft !== undefined ? timeLeft : existingSession.timeLeft,
+      isRunning: isRunning !== undefined ? isRunning : existingSession.isRunning,
+      endTime: endTime || existingSession.endTime,
+      sessionsCompleted: sessionsCompleted !== undefined ? sessionsCompleted : existingSession.sessionsCompleted,
+      settings: settings || existingSession.settings,
       lastUpdated: Date.now()
-    });
+    };
+    
+    // Store the updated session
+    activeSessions.set(userId, updatedSession);
     
     // Sync information to connected clients
     const socketId = connectedUsers.get(userId);
     if (socketId && io) {
       io.to(socketId).emit('pomodoroStateUpdate', {
         userId,
-        mode,
-        timeLeft,
-        isRunning,
-        endTime,
-        sessionsCompleted
+        mode: updatedSession.mode,
+        timeLeft: updatedSession.timeLeft,
+        isRunning: updatedSession.isRunning,
+        endTime: updatedSession.endTime,
+        sessionsCompleted: updatedSession.sessionsCompleted,
+        settings: updatedSession.settings
       });
     }
     
     res.status(200).json({
       success: true,
-      message: 'Pomodoro session updated'
+      message: 'Pomodoro session updated',
+      data: updatedSession
     });
   } catch (error) {
     console.error('Error updating pomodoro session:', error);

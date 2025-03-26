@@ -63,11 +63,57 @@ export function FloatingTimer() {
     startTimer,
     pauseTimer,
     resetTimer,
+    setMode,
+    formatTime: contextFormatTime,
   } = usePomodoroContext();
   
   const [isCollapsed, setIsCollapsed] = useState(true);
+  const [lastTimeCheck, setLastTimeCheck] = useState(Date.now());
   const router = useRouter();
-  
+
+  // Add an effect to ensure the timer updates even when inactive
+  useEffect(() => {
+    // Use requestAnimationFrame for smoother UI updates
+    let rafId: number;
+    let lastUpdateTime = Date.now();
+    
+    const updateTimer = () => {
+      const now = Date.now();
+      
+      // Update at least every 200ms, even if the browser throttles us
+      if (now - lastUpdateTime > 200) {
+        lastUpdateTime = now;
+        // Force re-render without changing state
+        setLastTimeCheck(now);
+      }
+      
+      // Request next frame
+      rafId = requestAnimationFrame(updateTimer);
+    };
+    
+    // Start update loop
+    rafId = requestAnimationFrame(updateTimer);
+    
+    // Cleanup
+    return () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+    };
+  }, []);
+
+  // Force high-precision updates when the timer is visible
+  useEffect(() => {
+    // Use a fast interval to ensure updates in visible tabs
+    const highPrecisionInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        setLastTimeCheck(Date.now());
+      }
+    }, 500);
+    
+    return () => clearInterval(highPrecisionInterval);
+  }, []);
+
   const navigateToPomodoro = () => {
     router.push('/dashboard?tab=pomodoro');
   };
@@ -88,7 +134,7 @@ export function FloatingTimer() {
         transition-all duration-300 ${getModeTextColor(mode)}`}
       onClick={toggleCollapse}
     >
-      <span className="font-mono font-bold">{formatTime(timeLeft)}</span>
+      <span className={`font-mono font-bold ${getModeTextColor(mode)}`}>{formatTime(timeLeft)}</span>
       <Maximize2 className="h-3 w-3 ml-1.5" />
     </Button>
   ) : (
@@ -111,37 +157,70 @@ export function FloatingTimer() {
           {formatTime(timeLeft)}
         </div>
         
-        <div className="flex gap-1">
-          {!isRunning ? (
+        <div className="flex justify-between gap-2 mt-1">
+          <div className="flex gap-1">
+            {!isRunning ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 transition-all duration-300"
+                onClick={startTimer}
+                title="Start timer"
+              >
+                <Play className="h-3 w-3" />
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 transition-all duration-300"
+                onClick={pauseTimer}
+                title="Pause timer"
+              >
+                <Pause className="h-3 w-3" />
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
               className="h-8 w-8 p-0 transition-all duration-300"
-              onClick={startTimer}
-              title="Start timer"
+              onClick={resetTimer}
+              title="Reset timer"
             >
-              <Play className="h-3 w-3" />
+              <RotateCcw className="h-3 w-3" />
             </Button>
-          ) : (
+          </div>
+          
+          <div className="flex gap-1">
             <Button
-              variant="outline"
+              variant={mode === 'pomodoro' ? 'default' : 'outline'}
               size="sm"
-              className="h-8 w-8 p-0 transition-all duration-300"
-              onClick={pauseTimer}
-              title="Pause timer"
+              className={`h-8 px-2 transition-all duration-300 ${mode === 'pomodoro' ? 'bg-red-500 hover:bg-red-600 text-white' : 'text-red-500'}`}
+              onClick={() => { if (isRunning) pauseTimer(); setMode('pomodoro'); }}
+              title="Switch to Focus mode"
             >
-              <Pause className="h-3 w-3" />
+              F
             </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0 transition-all duration-300"
-            onClick={resetTimer}
-            title="Reset timer"
-          >
-            <RotateCcw className="h-3 w-3" />
-          </Button>
+            <Button
+              variant={mode === 'shortBreak' ? 'default' : 'outline'}
+              size="sm"
+              className={`h-8 px-2 transition-all duration-300 ${mode === 'shortBreak' ? 'bg-green-500 hover:bg-green-600 text-white' : 'text-green-500'}`}
+              onClick={() => { if (isRunning) pauseTimer(); setMode('shortBreak'); }}
+              title="Switch to Short Break"
+            >
+              S
+            </Button>
+            <Button
+              variant={mode === 'longBreak' ? 'default' : 'outline'}
+              size="sm"
+              className={`h-8 px-2 transition-all duration-300 ${mode === 'longBreak' ? 'bg-blue-500 hover:bg-blue-600 text-white' : 'text-blue-500'}`}
+              onClick={() => { if (isRunning) pauseTimer(); setMode('longBreak'); }}
+              title="Switch to Long Break"
+            >
+              L
+            </Button>
+          </div>
+          
           <Button
             variant="outline"
             size="sm"

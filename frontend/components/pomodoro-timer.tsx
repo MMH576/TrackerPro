@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePomodoroContext } from '@/contexts/pomodoro-context';
+import React from 'react';
 
 export function PomodoroTimer() {
   // Get Pomodoro context
@@ -93,6 +94,63 @@ export function PomodoroTimer() {
     }
   };
 
+  // Timer display
+  const TimerDisplay = ({ time, mode }: { time: number, mode: 'pomodoro' | 'shortBreak' | 'longBreak' }) => {
+    // Use a local ref to track render times
+    const lastRenderRef = React.useRef<number>(Date.now());
+    const [, forceUpdate] = React.useState({});
+    
+    // Force re-render at 60fps when timer is running and visible
+    React.useEffect(() => {
+      let frameId: number;
+      
+      const updateFrame = () => {
+        const now = Date.now();
+        // Only update every ~16ms (60fps) to avoid excessive renders
+        if (now - lastRenderRef.current >= 16) {
+          lastRenderRef.current = now;
+          forceUpdate({});
+        }
+        frameId = requestAnimationFrame(updateFrame);
+      };
+      
+      // Only use animation frames when document is visible
+      if (document.visibilityState === 'visible') {
+        frameId = requestAnimationFrame(updateFrame);
+      }
+      
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          frameId = requestAnimationFrame(updateFrame);
+        } else if (frameId) {
+          cancelAnimationFrame(frameId);
+        }
+      };
+      
+      // Listen for visibility changes
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      
+      return () => {
+        if (frameId) {
+          cancelAnimationFrame(frameId);
+        }
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
+    }, []);
+    
+    return (
+      <motion.span 
+        className="text-6xl font-bold"
+        key={`time-${time}`}
+        initial={{ opacity: 0.7, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2 }}
+      >
+        {formatTime(time)}
+      </motion.span>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6 animation-all duration-300">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -124,15 +182,6 @@ export function PomodoroTimer() {
                   >
                     {soundEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => setShowSettings(!showSettings)}
-                    title="Settings"
-                    className="rounded-full h-8 w-8"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -142,39 +191,30 @@ export function PomodoroTimer() {
                 <div className="inline-flex p-1 rounded-lg bg-muted">
                   <Button 
                     variant={mode === 'pomodoro' ? 'default' : 'outline'}
-                    className={`rounded-md flex items-center gap-2 transition-all ${
-                      mode === 'pomodoro' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    className={`rounded-md flex items-center gap-2 transition-all duration-300 ${
+                      mode === 'pomodoro' ? 'bg-red-500 text-white' : 'text-muted-foreground hover:text-foreground'
                     }`}
-                    onClick={() => {
-                      if (isRunning) pauseTimer();
-                      setMode('pomodoro');
-                    }}
+                    onClick={() => setMode('pomodoro')}
                   >
                     <Play className="h-4 w-4" />
                     <span>Focus</span>
                   </Button>
                   <Button 
                     variant={mode === 'shortBreak' ? 'secondary' : 'outline'}
-                    className={`rounded-md flex items-center gap-2 transition-all ${
+                    className={`rounded-md flex items-center gap-2 transition-all duration-300 ${
                       mode === 'shortBreak' ? 'bg-green-500 text-white' : 'text-muted-foreground hover:text-foreground'
                     }`}
-                    onClick={() => {
-                      if (isRunning) pauseTimer();
-                      setMode('shortBreak');
-                    }}
+                    onClick={() => setMode('shortBreak')}
                   >
                     <Coffee className="h-4 w-4" />
                     <span>Short Break</span>
                   </Button>
                   <Button 
                     variant={mode === 'longBreak' ? 'secondary' : 'outline'}
-                    className={`rounded-md flex items-center gap-2 transition-all ${
+                    className={`rounded-md flex items-center gap-2 transition-all duration-300 ${
                       mode === 'longBreak' ? 'bg-blue-500 text-white' : 'text-muted-foreground hover:text-foreground'
                     }`}
-                    onClick={() => {
-                      if (isRunning) pauseTimer();
-                      setMode('longBreak');
-                    }}
+                    onClick={() => setMode('longBreak')}
                   >
                     <Brain className="h-4 w-4" />
                     <span>Long Break</span>
@@ -221,15 +261,7 @@ export function PomodoroTimer() {
                     
                     {/* Timer display */}
                     <div className="absolute flex flex-col items-center">
-                      <motion.span 
-                        className="text-6xl font-bold"
-                        key={`time-${timeLeft}`}
-                        initial={{ opacity: 0.7, scale: 0.97 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        {formatTime(timeLeft)}
-                      </motion.span>
+                      <TimerDisplay time={timeLeft} mode={mode} />
                       <span className="text-sm font-medium text-muted-foreground capitalize mt-2">
                         {mode === 'pomodoro' ? 'Focus Time' : 
                          mode === 'shortBreak' ? 'Short Break' : 'Long Break'}
@@ -255,8 +287,16 @@ export function PomodoroTimer() {
                     onClick={startTimer} 
                     className="gap-2 min-w-[120px] transition-all duration-300"
                     size="lg"
-                    variant={mode === 'pomodoro' ? 'default' : 
-                            mode === 'shortBreak' ? 'secondary' : 'secondary'}
+                    variant={
+                      mode === 'pomodoro' ? 'default' : 
+                      mode === 'shortBreak' ? 'secondary' : 'secondary'
+                    }
+                    style={{
+                      backgroundColor: mode === 'pomodoro' ? 'var(--red-500)' : 
+                                      mode === 'shortBreak' ? 'var(--green-500)' : 'var(--blue-500)',
+                      color: 'white',
+                      transition: 'all 0.3s ease'
+                    }}
                   >
                     <Play className="h-5 w-5" />
                     Start
