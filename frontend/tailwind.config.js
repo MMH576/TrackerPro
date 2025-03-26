@@ -118,48 +118,6 @@ module.exports = {
           warning: "#FBBD23",
           error: "#F87272",
         }
-      },
-      {
-        cupcake: {
-          primary: "#65C3C8",            // Teal
-          secondary: "#EF9FBC",          // Pink
-          accent: "#EEAF3A",             // Yellow
-          neutral: "#291334",            // Dark Purple
-          "base-100": "#FAF7F5",         // Cream
-          "base-content": "#291334",     // Dark Purple (text)
-          info: "#3ABFF8",
-          success: "#36D399",
-          warning: "#FBBD23",
-          error: "#F87272",
-        }
-      },
-      {
-        corporate: {
-          primary: "#4B6BFB",            // Blue 
-          secondary: "#7B92B2",          // Slate blue
-          accent: "#37CDBE",             // Teal
-          neutral: "#3D4451",            // Dark gray
-          "base-100": "#FFFFFF",         // White
-          "base-content": "#333333",     // Dark gray (text)
-          info: "#3ABFF8",
-          success: "#36D399",
-          warning: "#FBBD23",
-          error: "#F87272",
-        }
-      },
-      {
-        synthwave: {
-          primary: "#E779C1",           // Pink
-          secondary: "#58C7F3",         // Blue
-          accent: "#F3CC30",            // Yellow
-          neutral: "#2B1C2F",           // Dark purple
-          "base-100": "#2D1B69",        // Very dark blue-purple
-          "base-content": "#F9F7FD",    // Very light purple (text)
-          info: "#3ABFF8",
-          success: "#36D399",
-          warning: "#FBBD23",
-          error: "#F87272",
-        }
       }
     ],
     darkTheme: "dark",

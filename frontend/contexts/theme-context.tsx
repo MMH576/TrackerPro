@@ -4,29 +4,24 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 
 // Define theme categories for better organization
 export const themeCategories = {
-  light: ["light", "corporate"],
-  dark: ["dark", "synthwave"],
-  colorful: ["cupcake"]
+  light: ["light"],
+  dark: ["dark"]
 };
 
 // Flatten all themes from categories
 export const themes = [
   ...themeCategories.light,
-  ...themeCategories.dark,
-  ...themeCategories.colorful
+  ...themeCategories.dark
 ];
 
 // Theme metadata for richer theme selection UI
 export const themeMetadata = {
   light: { name: "Light", icon: "☀️", description: "Clean, minimal light theme" },
-  dark: { name: "Dark", icon: "🌙", description: "Dark mode for night viewing" },
-  cupcake: { name: "Cupcake", icon: "🧁", description: "Pastel and soft colors" },
-  synthwave: { name: "Synthwave", icon: "🌊", description: "Retro 80s neon vibe" },
-  corporate: { name: "Corporate", icon: "🏢", description: "Professional blue theme" }
+  dark: { name: "Dark", icon: "🌙", description: "Dark mode for night viewing" }
 };
 
 // Map DaisyUI themes to Shadcn dark/light mode
-const darkThemes = ["dark", "synthwave"];
+const darkThemes = ["dark"];
 
 type ThemeContextType = {
   theme: string;
@@ -117,7 +112,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     
     // Get theme based on preferences
     const savedTheme = localStorage.getItem("theme") || "light";
-    const themeToApply = savedUseSystemTheme && detectedSystemTheme ? detectedSystemTheme : savedTheme;
+    // Only use light or dark theme
+    const validTheme = themes.includes(savedTheme) ? savedTheme : "light";
+    const themeToApply = savedUseSystemTheme && detectedSystemTheme ? detectedSystemTheme : validTheme;
     
     // Apply the initial theme
     handleThemeChange(themeToApply);

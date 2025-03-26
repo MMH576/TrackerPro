@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useThemeContext } from "@/contexts/theme-context";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -26,7 +25,7 @@ export function ThemeToggle() {
   }
 
   // Quick toggle options
-  const favoriteThemes = ["light", "dark", "cupcake", "synthwave", "corporate"];
+  const availableThemes = ["light", "dark"];
   
   // Get current theme info
   const currentThemeInfo = getThemeInfo(theme);
@@ -54,7 +53,7 @@ export function ThemeToggle() {
                 </p>
               </div>
               <div className="p-3 space-y-3">
-                {favoriteThemes.map((themeName) => {
+                {availableThemes.map((themeName) => {
                   const themeInfo = getThemeInfo(themeName);
                   const isSelected = theme === themeName;
                   return (

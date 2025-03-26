@@ -20,7 +20,7 @@ export function ThemeSelector() {
   }
 
   // All available themes
-  const allThemes = [...themeCategories.light, ...themeCategories.dark, ...themeCategories.colorful];
+  const allThemes = ["light", "dark"];
 
   return (
     <div className="space-y-6">
@@ -37,7 +37,7 @@ export function ThemeSelector() {
         <RadioGroup 
           value={theme} 
           onValueChange={setTheme}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4"
         >
           {allThemes.map((themeName) => {
             const themeInfo = getThemeInfo(themeName);
@@ -129,9 +129,7 @@ export function ThemeSelector() {
                       >
                         {themeCategories.light.includes(themeName) 
                           ? "Light" 
-                          : themeCategories.dark.includes(themeName) 
-                            ? "Dark" 
-                            : "Colorful"}
+                          : "Dark"}
                       </div>
                     </div>
                   </Card>
