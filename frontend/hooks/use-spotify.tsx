@@ -87,6 +87,8 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const isTogglingPlayback = useRef(false);
   const volumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isManualControl = useRef(false);
+  const volumeOperationInProgressRef = useRef<boolean>(false);
+  const volumeQueuedValueRef = useRef<number | null>(null);
 
   // Initialize Spotify client
   useEffect(() => {
@@ -679,40 +681,29 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [deviceId]);
 
-  // Improve the volume handling function to be more reliable
+  // Completely non-blocking volume control with no delays
   const handleVolumeChange = useCallback((newVolume: number) => {
-    // Update the state immediately for UI responsiveness
+    // Update local state immediately for UI responsiveness
     setVolumeLevel(newVolume);
     
-    // Only call the API if we have what we need
-    if (deviceId && spotifyClient.current) {
-      // Set the player volume if it exists (local player)
-      if (playerRef.current) {
-        try {
-          playerRef.current.setVolume(newVolume / 100);
-        } catch (error) {
-          console.error('Error setting player volume locally:', error);
-        }
+    // Set local player volume first (most important for preventing interruptions)
+    if (playerRef.current) {
+      try {
+        playerRef.current.setVolume(newVolume / 100);
+      } catch (e) {
+        // Ignore local player errors
       }
-      
-      // Debounce the actual API call to prevent too many requests
-      if (volumeTimeoutRef.current) {
-        clearTimeout(volumeTimeoutRef.current);
-      }
-      
-      volumeTimeoutRef.current = setTimeout(async () => {
-        try {
-          // Use a lower-level approach with error suppression
-          await spotifyClient.current?.setVolume(deviceId, newVolume);
-        } catch (error) {
-          console.error('Error setting volume via API:', error);
-          // Silently fail - don't interrupt playback for volume errors
-        } finally {
-          volumeTimeoutRef.current = null;
-        }
-      }, 300);
     }
-  }, [deviceId, setVolumeLevel]);
+    
+    // Only proceed with API call if we have the required info
+    if (!deviceId || !spotifyClient.current) return;
+    
+    // Don't await or use timeouts for volume changes - fire and forget
+    spotifyClient.current.setVolume(deviceId, newVolume).catch(error => {
+      // Silently handle all volume errors
+      console.debug('Volume API error (safely ignored):', error);
+    });
+  }, [deviceId]);
 
   // Add a function specifically for manual control by the user
   const manualTogglePlayPause = useCallback(async () => {

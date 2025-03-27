@@ -203,7 +203,13 @@ export default function PlayerSpotify() {
     }
   }, []);
 
-  // Update the track progress tracking with better time display and more accurate synchronization
+  // Create a global ref for progress updates that can be accessed across effects
+  const lastUpdateRef = useRef<{time: number, position: number}>({
+    time: Date.now(),
+    position: 0
+  });
+
+  // Update the track progress tracking to use the shared ref
   useEffect(() => {
     if (!currentTrack) {
       setProgressValue(0);
@@ -213,49 +219,77 @@ export default function PlayerSpotify() {
     const duration = currentTrack.duration_ms || 300000; // Default to 5 minutes if duration unknown
     
     // Use the position from the track data if available
-    let elapsed = currentTrack.position_ms || 0;
-    let startTime = currentTrack.progressTimestamp || performance.now();
+    let elapsed = currentTrack.position_ms !== undefined ? currentTrack.position_ms : 0;
+    let startTime = currentTrack.progressTimestamp || Date.now();
     
-    // Set initial progress value
-    setProgressValue((elapsed / duration) * 100);
+    // Set initial progress value but don't reset if already playing
+    if (!isPlaying || currentTrack.position_ms !== undefined) {
+      setProgressValue((elapsed / duration) * 100);
+    }
+    
+    // Update the reference with the latest values
+    lastUpdateRef.current = {
+      time: startTime,
+      position: elapsed
+    };
     
     let animationFrameId: number;
     
-    const updateProgress = (timestamp: number) => {
-      if (!isPlaying) {
-        // When paused, just request next frame without updating
-        animationFrameId = requestAnimationFrame(updateProgress);
-        return;
-      }
-      
-      // Calculate elapsed time since the last known position update
-      const timeSincePositionUpdate = timestamp - startTime;
-      
-      // Current position = last known position + time elapsed since then
-      const currentPosition = Math.min(elapsed + timeSincePositionUpdate, duration);
-      const progress = (currentPosition / duration) * 100;
-      
-      setProgressValue(progress);
-      
-      if (progress < 100) {
+    const updateProgress = () => {
+      // Calculate real-time progress based on elapsed time since last update
+      if (isPlaying) {
+        const now = Date.now();
+        const timeSinceLastUpdate = now - lastUpdateRef.current.time;
+        const estimatedPosition = Math.min(
+          lastUpdateRef.current.position + timeSinceLastUpdate,
+          duration
+        );
+        
+        const newProgress = (estimatedPosition / duration) * 100;
+        setProgressValue(newProgress);
+        
+        // Request next animation frame
         animationFrameId = requestAnimationFrame(updateProgress);
       } else {
-        // Track ended naturally, wait for next track
-        // Don't reset progress immediately to avoid visual jumps
-        setTimeout(() => {
-          if (progressValue >= 99) { // Only reset if we're still at the end
-            setProgressValue(0);
-          }
-        }, 500);
+        // Just keep requesting frames without updating when paused
+        animationFrameId = requestAnimationFrame(updateProgress);
       }
     };
     
+    // Start the animation loop
     animationFrameId = requestAnimationFrame(updateProgress);
+    
+    // Poll Spotify API for position updates to correct drift
+    const pollInterval = setInterval(async () => {
+      if (!isPlaying || !deviceId || !spotifyClient.current) return;
+      
+      try {
+        const playbackState = await spotifyClient.current.getPlaybackState();
+        if (playbackState && playbackState.progress_ms !== undefined) {
+          const actualPosition = playbackState.progress_ms;
+          const now = Date.now();
+          
+          // Update our reference with the actual position from Spotify
+          lastUpdateRef.current = {
+            time: now,
+            position: actualPosition
+          };
+          
+          // Calculate new progress based on actual position
+          const actualProgress = (actualPosition / duration) * 100;
+          setProgressValue(actualProgress);
+        }
+      } catch (error) {
+        // Silent fail - just continue with our estimated position
+        console.debug('Failed to get playback state for position correction:', error);
+      }
+    }, 3000); // Poll every 3 seconds to avoid rate limiting
     
     return () => {
       cancelAnimationFrame(animationFrameId);
+      clearInterval(pollInterval);
     };
-  }, [currentTrack, isPlaying]);
+  }, [currentTrack, isPlaying, deviceId]);
 
   // Add an effect to reset the progress when track changes
   useEffect(() => {
@@ -275,7 +309,49 @@ export default function PlayerSpotify() {
     setProgressValue(value[0]);
   };
 
-  // Enhance the seek function with visual feedback
+  // Add a ref to track the previous track ID for detecting track changes
+  const previousTrackIdRef = useRef<string | null>(null);
+
+  // Add another effect specifically to handle track changes
+  useEffect(() => {
+    const trackId = currentTrack?.id || null;
+    
+    // Check if the track has changed
+    if (trackId && trackId !== previousTrackIdRef.current) {
+      console.log('Track changed, updating progress information');
+      
+      // Update our reference to the new track
+      previousTrackIdRef.current = trackId;
+      
+      // Get the initial position when a track changes
+      if (spotifyClient.current && deviceId) {
+        spotifyClient.current.getProgress(deviceId)
+          .then(progress => {
+            if (progress !== null && currentTrack) {
+              // Update the current track with the latest position info
+              const updatedTrack = {
+                ...currentTrack,
+                position_ms: progress,
+                progressTimestamp: Date.now()
+              };
+              
+              // Update the track object
+              setCurrentTrack(updatedTrack);
+              
+              // Update the progress slider immediately
+              if (currentTrack.duration_ms) {
+                setProgressValue((progress / currentTrack.duration_ms) * 100);
+              }
+            }
+          })
+          .catch(error => {
+            console.error('Failed to get initial track progress:', error);
+          });
+      }
+    }
+  }, [currentTrack?.id, deviceId]);
+
+  // Update the handleSeek function to use the shared lastUpdateRef
   const handleSeek = async (value: number[]) => {
     if (!currentTrack || !currentTrack.duration_ms || !deviceId) return;
     
@@ -294,7 +370,13 @@ export default function PlayerSpotify() {
       const updatedTrack = {
         ...currentTrack,
         position_ms: position,
-        progressTimestamp: performance.now()
+        progressTimestamp: Date.now()
+      };
+      
+      // Update our shared ref immediately for smooth progress tracking
+      lastUpdateRef.current = {
+        time: Date.now(),
+        position: position
       };
       
       // This trick forces the progress tracking effect to use the new position
@@ -348,57 +430,28 @@ export default function PlayerSpotify() {
   // Add a ref to track if volume is being adjusted
   const isAdjustingVolume = useRef(false);
 
-  // Enhance the volume change handler to update UI state
+  // Simplified volume change handler with instant feedback
   const handleVolumeChange = useCallback((value: number[]) => {
     const newVolume = value[0];
     
-    // Set debounced volume for UI updates
+    // Update UI state instantly
     setDebouncedVolume(newVolume);
-    
-    // Show volume adjustment in UI
     setIsVolumeAdjusting(true);
     
-    // Track that we're adjusting volume to avoid conflicts with other operations
-    isAdjustingVolume.current = true;
+    // Apply volume change immediately without waiting
+    setVolume(newVolume);
     
-    // Clear the flag after a delay
+    // Clear any previous timeout to hide the volume UI
     if (volumeFlagTimeout.current) {
       clearTimeout(volumeFlagTimeout.current);
     }
-
+    
+    // Set a timeout to hide the volume UI after adjustment
     volumeFlagTimeout.current = setTimeout(() => {
-      isAdjustingVolume.current = false;
       setIsVolumeAdjusting(false);
       volumeFlagTimeout.current = null;
-    }, 500);
-  }, []);
-
-  // Add a ref for tracking volume adjustment state timeout
-  const volumeFlagTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  // Update the play/pause handler to use the manual toggle
-  const handlePlayPauseToggle = useCallback(() => {
-    // Don't toggle if we're in the middle of adjusting volume
-    if (isAdjustingVolume.current) return;
-    
-    // Update the local state immediately for UI feedback
-    setLocalPlayingState(!localPlayingState);
-    
-    // Then trigger the actual toggle using the manual function
-    manualTogglePlayPause().catch(() => {
-      // If there's an error, revert the local state
-      setLocalPlayingState(localPlayingState);
-    });
-  }, [manualTogglePlayPause, localPlayingState]);
-
-  // Clean up timeouts on unmount
-  useEffect(() => {
-    return () => {
-      if (volumeFlagTimeout.current) {
-        clearTimeout(volumeFlagTimeout.current);
-      }
-    };
-  }, []);
+    }, 800);
+  }, [setVolume]);
 
   // Add a debounced volume change handler to prevent playback interruptions
   const [debouncedVolume, setDebouncedVolume] = useState(volume);
@@ -521,6 +574,75 @@ export default function PlayerSpotify() {
   const getPlaylistId = (playlist: any): string => {
     return playlist?.id ? String(playlist.id) : '';
   };
+
+  // Add visibility change handling to ensure progress tracking works when switching tabs
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // When the page becomes visible again, update our reference time
+      // to prevent a jump in progress calculation
+      if (document.visibilityState === 'visible' && isPlaying && currentTrack) {
+        // Reset the lastUpdateRef to the current time but keep the position
+        // This prevents progress from jumping ahead when returning to the tab
+        const currentPosition = lastUpdateRef.current.position;
+        lastUpdateRef.current = {
+          time: Date.now(),
+          position: currentPosition
+        };
+        
+        // Also fetch the actual position from Spotify to correct any drift
+        if (spotifyClient.current && deviceId) {
+          spotifyClient.current.getProgress(deviceId)
+            .then((progress: number | null) => {
+              if (progress !== null) {
+                // Update our tracking with the actual position
+                lastUpdateRef.current = {
+                  time: Date.now(),
+                  position: progress
+                };
+                
+                // Update the UI
+                if (currentTrack?.duration_ms) {
+                  setProgressValue((progress / currentTrack.duration_ms) * 100);
+                }
+              }
+            })
+            .catch(error => {
+              console.debug('Failed to get progress after visibility change:', error);
+            });
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isPlaying, currentTrack, deviceId]);
+
+  // Add a ref for tracking volume adjustment state timeout
+  const volumeFlagTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  // Update the play/pause handler to be compatible with the simplified volume control
+  const handlePlayPauseToggle = useCallback(() => {
+    // Update the local state immediately for UI feedback
+    setLocalPlayingState(!localPlayingState);
+    
+    // Trigger the actual toggle using the manual function
+    manualTogglePlayPause().catch(() => {
+      // If there's an error, revert the local state
+      setLocalPlayingState(localPlayingState);
+    });
+  }, [manualTogglePlayPause, localPlayingState]);
+
+  // Clean up timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (volumeFlagTimeout.current) {
+        clearTimeout(volumeFlagTimeout.current);
+      }
+    };
+  }, []);
 
   // Display authentication view
   if (!isAuthenticated) {

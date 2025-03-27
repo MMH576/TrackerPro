@@ -337,13 +337,47 @@ export class SpotifyClient {
     }
   }
 
-  // Set volume
+  // Completely non-blocking volume control that never disrupts playback
   async setVolume(deviceId: string, volumePercent: number): Promise<void> {
-    const url = `${this.baseUrl}/me/player/volume?device_id=${deviceId}&volume_percent=${Math.round(volumePercent)}`;
-    
-    await this.fetchWithAuth(url, {
-      method: 'PUT',
-    });
+    try {
+      // Validate the volume is within range
+      const validVolume = Math.max(0, Math.min(100, Math.round(volumePercent)));
+      
+      // Always update local player volume first for immediate feedback
+      // This is the key to preventing playback interruption
+      if (typeof window !== 'undefined' && window.Spotify) {
+        try {
+          const spotifyWindow = window as any;
+          if (spotifyWindow.Spotify?.Player?._instances?.length > 0) {
+            const player = spotifyWindow.Spotify.Player._instances[0];
+            if (player && typeof player.setVolume === 'function') {
+              player.setVolume(validVolume / 100);
+            }
+          }
+        } catch (localError) {
+          // Ignore local player errors
+        }
+      }
+      
+      // Create the API URL but don't await the call
+      const url = `${this.baseUrl}/me/player/volume?device_id=${deviceId}&volume_percent=${validVolume}`;
+      
+      // Fire and forget approach for volume changes - don't block playback for any reason
+      this.fetchWithAuth(url, {
+        method: 'PUT'
+      }).catch(error => {
+        // Silently ignore all errors for volume changes
+        // We've already set the local volume, so the API call is just for synchronization
+        console.debug('Background volume sync error (ignored):', error);
+      });
+      
+      // Return immediately after setting local volume, don't wait for API
+      return;
+    } catch (error) {
+      // Log but never throw errors for volume changes
+      console.debug('Volume control error (handled):', error);
+      return;
+    }
   }
 
   // Get currently playing track
@@ -522,6 +556,22 @@ export class SpotifyClient {
     } catch (error) {
       console.error('Error seeking:', error);
       throw error;
+    }
+  }
+
+  // Add a dedicated method to get current playback progress
+  async getProgress(deviceId: string): Promise<number | null> {
+    try {
+      const playbackState = await this.getPlaybackState();
+      
+      if (!playbackState) {
+        return null;
+      }
+      
+      return playbackState.progress_ms || 0;
+    } catch (error) {
+      console.error('Error getting playback progress:', error);
+      return null;
     }
   }
 } 
