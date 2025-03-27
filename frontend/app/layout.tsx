@@ -8,7 +8,9 @@ import { AuthProvider } from '@/lib/auth-context'
 import { NotificationProvider } from '@/components/notification-provider'
 import { Toaster } from '@/components/ui/toaster'
 import { SupabaseProvider } from '@/lib/supabase-context'
-import { SpotifyProvider } from '@/contexts/spotify-context'
+import { SpotifyProvider } from '@/hooks/use-spotify'
+import { PomodoroProvider } from '@/contexts/pomodoro-context'
+import { FloatingPlayerWrapper } from '@/components/spotify/FloatingPlayerWrapper'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -59,14 +61,17 @@ export default function RootLayout({
             <AuthProvider>
               <SupabaseProvider>
                 <SpotifyProvider>
-                  <UserProvider>
-                    <NotificationProvider>
-                      <div className="flex min-h-screen flex-col">
-                        {children}
-                      </div>
-                      <Toaster />
-                    </NotificationProvider>
-                  </UserProvider>
+                  <PomodoroProvider>
+                    <UserProvider>
+                      <NotificationProvider>
+                        <div className="flex min-h-screen flex-col">
+                          {children}
+                        </div>
+                        <FloatingPlayerWrapper />
+                        <Toaster />
+                      </NotificationProvider>
+                    </UserProvider>
+                  </PomodoroProvider>
                 </SpotifyProvider>
               </SupabaseProvider>
             </AuthProvider>

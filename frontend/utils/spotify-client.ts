@@ -9,6 +9,9 @@ export interface Track {
   id: string;
   name: string;
   uri: string;
+  duration_ms?: number;
+  position_ms?: number;
+  progressTimestamp?: number;
   album?: {
     id: string;
     name: string;
@@ -117,17 +120,42 @@ export class SpotifyClient {
           ...requestOptions.headers,
           'Authorization': `Bearer ${this.accessToken}`,
         };
-        return fetch(url, requestOptions).then(res => {
-          if (!res.ok) throw new Error(`Spotify API error: ${res.status} ${res.statusText}`);
-          return res.json();
-        });
+        const retryResponse = await fetch(url, requestOptions);
+        
+        if (!retryResponse.ok) {
+          throw new Error(`Spotify API error: ${retryResponse.status} ${retryResponse.statusText}`);
+        }
+        
+        // Return null for 204 No Content responses
+        if (retryResponse.status === 204) {
+          return null;
+        }
+        
+        // Try to parse as JSON only if there's content
+        const contentType = retryResponse.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          return await retryResponse.json();
+        }
+        
+        return null;
       }
 
       if (!response.ok) {
         throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
       }
-
-      return response.json();
+      
+      // Return null for 204 No Content responses
+      if (response.status === 204) {
+        return null;
+      }
+      
+      // Try to parse as JSON only if there's content
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      
+      return null;
     } catch (error) {
       console.error('Error fetching from Spotify API:', error);
       throw error;
@@ -160,43 +188,153 @@ export class SpotifyClient {
     uris?: string[];
     offset?: { position: number };
     position_ms?: number;
-  }): Promise<void> {
+  }, suppressErrors: boolean = false): Promise<void> {
     const url = `${this.baseUrl}/me/player/play?device_id=${deviceId}`;
     
-    await this.fetchWithAuth(url, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: options ? JSON.stringify(options) : undefined,
-    });
+    try {
+      // Add a small delay to ensure device is ready
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      await this.fetchWithAuth(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: options ? JSON.stringify(options) : undefined,
+      });
+    } catch (error: any) {
+      console.error('Error playing track:', error);
+      
+      // If it's a device not found error or player error, try transferring playback first
+      if (error.message && (
+        error.message.includes('Device not found') || 
+        error.message.includes('Player command failed') ||
+        error.message.includes('500') // Handle 500 errors gracefully
+      )) {
+        console.log('Attempting to transfer playback to device and retry...');
+        try {
+          await this.transferPlayback(deviceId);
+          // Retry after transfer with a delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await this.fetchWithAuth(url, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: options ? JSON.stringify(options) : undefined,
+          });
+          return;
+        } catch (retryError) {
+          console.error('Retry failed:', retryError);
+          // If suppressErrors is true, we don't throw the error further
+          if (suppressErrors) return;
+        }
+      }
+      
+      // If suppressErrors is true, we don't throw the error
+      if (suppressErrors) return;
+      
+      throw error;
+    }
   }
 
   // Pause playback
   async pause(deviceId: string): Promise<void> {
     const url = `${this.baseUrl}/me/player/pause?device_id=${deviceId}`;
     
-    await this.fetchWithAuth(url, {
-      method: 'PUT',
-    });
+    try {
+      await this.fetchWithAuth(url, {
+        method: 'PUT',
+      });
+    } catch (error: any) {
+      console.error('Error pausing playback:', error);
+      
+      // If it's a device not found error, try transferring playback first
+      if (error.message && (
+        error.message.includes('Device not found') || 
+        error.message.includes('Player command failed')
+      )) {
+        try {
+          await this.transferPlayback(deviceId);
+          // Retry after transfer with a delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await this.fetchWithAuth(url, {
+            method: 'PUT',
+          });
+          return;
+        } catch (retryError) {
+          console.error('Retry failed:', retryError);
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // Skip to next track
   async next(deviceId: string): Promise<void> {
     const url = `${this.baseUrl}/me/player/next?device_id=${deviceId}`;
     
-    await this.fetchWithAuth(url, {
-      method: 'POST',
-    });
+    try {
+      await this.fetchWithAuth(url, {
+        method: 'POST',
+      });
+    } catch (error: any) {
+      console.error('Error skipping to next track:', error);
+      
+      // If it's a device not found error, try transferring playback first
+      if (error.message && (
+        error.message.includes('Device not found') || 
+        error.message.includes('Player command failed')
+      )) {
+        try {
+          await this.transferPlayback(deviceId);
+          // Retry after transfer with a delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await this.fetchWithAuth(url, {
+            method: 'POST',
+          });
+          return;
+        } catch (retryError) {
+          console.error('Retry failed:', retryError);
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // Skip to previous track
   async previous(deviceId: string): Promise<void> {
     const url = `${this.baseUrl}/me/player/previous?device_id=${deviceId}`;
     
-    await this.fetchWithAuth(url, {
-      method: 'POST',
-    });
+    try {
+      await this.fetchWithAuth(url, {
+        method: 'POST',
+      });
+    } catch (error: any) {
+      console.error('Error skipping to previous track:', error);
+      
+      // If it's a device not found error, try transferring playback first
+      if (error.message && (
+        error.message.includes('Device not found') || 
+        error.message.includes('Player command failed')
+      )) {
+        try {
+          await this.transferPlayback(deviceId);
+          // Retry after transfer with a delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          await this.fetchWithAuth(url, {
+            method: 'POST',
+          });
+          return;
+        } catch (retryError) {
+          console.error('Retry failed:', retryError);
+        }
+      }
+      
+      throw error;
+    }
   }
 
   // Set volume
@@ -228,6 +366,30 @@ export class SpotifyClient {
     return data.items.map((item: any) => item.track);
   }
 
+  // Get current playback state
+  async getPlaybackState(): Promise<any> {
+    try {
+      return await this.fetchWithAuth(`${this.baseUrl}/me/player`);
+    } catch (error) {
+      console.error('Error getting playback state:', error);
+      return null;
+    }
+  }
+
+  // Set shuffle state
+  async setShuffle(deviceId: string, state: boolean): Promise<void> {
+    const url = `${this.baseUrl}/me/player/shuffle?state=${state}&device_id=${deviceId}`;
+    
+    try {
+      await this.fetchWithAuth(url, {
+        method: 'PUT'
+      });
+    } catch (error) {
+      console.error('Error setting shuffle state:', error);
+      throw error;
+    }
+  }
+
   async search(query: string, types = ['track', 'album', 'artist', 'playlist'], limit = 10) {
     const typesString = types.join(',');
     const data = await this.fetchWithAuth(`/search?q=${encodeURIComponent(query)}&type=${typesString}&limit=${limit}`);
@@ -239,14 +401,66 @@ export class SpotifyClient {
     };
   }
 
-  async transferPlayback(deviceId: string) {
-    return this.fetchWithAuth('/me/player', {
-      method: 'PUT',
-      body: JSON.stringify({
-        device_ids: [deviceId],
-        play: false
-      })
-    });
+  // Transfer playback to specified device
+  async transferPlayback(deviceId: string, play: boolean = false): Promise<void> {
+    const url = `${this.baseUrl}/me/player`;
+    
+    try {
+      // Add a small delay before trying to transfer playback
+      // This helps ensure the device is fully registered with Spotify
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // First, check if the device is available
+      let deviceExists = false;
+      try {
+        const devices = await this.fetchWithAuth(`${this.baseUrl}/me/player/devices`);
+        deviceExists = devices && devices.devices && devices.devices.some((d: any) => d.id === deviceId);
+        
+        if (!deviceExists) {
+          console.log(`Device ID ${deviceId} not found in available devices, may be newly created`);
+          // We'll still try to transfer since devices can take time to appear in the list
+        }
+      } catch (deviceCheckError) {
+        console.warn('Could not check device availability:', deviceCheckError);
+        // Continue anyway, the transfer might still work
+      }
+      
+      // Make the transfer request
+      // If device doesn't exist, this will likely fail with 404, which is handled in the catch block
+      await this.fetchWithAuth(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          device_ids: [deviceId],
+          play: play
+        })
+      });
+      
+      // Add a reasonable delay to ensure the transfer completes
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      console.log(`Successfully transferred playback to device ${deviceId}`);
+    } catch (error: any) {
+      // Handle 404 errors (device not found) 
+      if (error.message && (error.message.includes('404') || error.message.includes('Not Found'))) {
+        console.warn('Device not found or not ready. This is normal for newly created devices.');
+        return; // Just return without failing
+      }
+      
+      // Handle 500 server errors
+      if (error.message && error.message.includes('500')) {
+        console.warn('Spotify server error during playback transfer. This is often temporary.');
+        return; // Continue without failing
+      }
+      
+      // For other errors, just log them but don't fail the entire operation
+      console.error('Error transferring playback:', error.message || error);
+      
+      // Don't throw the error further as transfer failure is not critical
+      // The playback can often still work without a successful transfer
+    }
   }
 
   async startPlayback(deviceId: string, uris?: string[], contextUri?: string, offset = 0) {
@@ -295,5 +509,19 @@ export class SpotifyClient {
     
     const data = await this.fetchWithAuth(`/recommendations?${params.toString()}`);
     return data.tracks;
+  }
+
+  // Seek to a specific position in the currently playing track (position in ms)
+  async seek(deviceId: string, position_ms: number) {
+    try {
+      await this.fetchWithAuth(`${this.baseUrl}/me/player/seek?device_id=${deviceId}&position_ms=${position_ms}`, {
+        method: 'PUT'
+      });
+      
+      console.log(`Seeked to position ${position_ms}ms`);
+    } catch (error) {
+      console.error('Error seeking:', error);
+      throw error;
+    }
   }
 } 

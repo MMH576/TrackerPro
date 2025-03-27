@@ -24,6 +24,7 @@ interface SpotifyContextType {
   volume: number;
   login: () => void;
   logout: () => void;
+  connectToSpotify: () => void;
   play: (uri?: string) => Promise<void>;
   pause: () => Promise<void>;
   skipToNext: () => Promise<void>;
@@ -89,13 +90,25 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
         if (!state) return;
         
         const currentTrackInfo = state.track_window.current_track;
+        console.log('Track changed:', currentTrackInfo);
+        
+        // Create a more detailed track object with all the necessary info
         setCurrentTrack({
           name: currentTrackInfo.name,
-          artist: currentTrackInfo.artists.map(artist => artist.name).join(', '),
-          album: currentTrackInfo.album.name,
-          albumArt: currentTrackInfo.album.images[0]?.url,
-          uri: currentTrackInfo.uri
+          artists: currentTrackInfo.artists.map(artist => ({
+            name: artist.name,
+            id: artist.uri.split(':').pop()
+          })),
+          album: {
+            name: currentTrackInfo.album.name,
+            images: currentTrackInfo.album.images || []
+          },
+          albumArt: currentTrackInfo.album.images?.[0]?.url,
+          uri: currentTrackInfo.uri,
+          duration_ms: currentTrackInfo.duration_ms || 0,
+          id: currentTrackInfo.id || currentTrackInfo.uri.split(':').pop()
         });
+        
         setIsPlaying(!state.paused);
       });
 
@@ -353,8 +366,12 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
 
   // Login with Spotify
   const login = () => {
-    const authUrl = spotifyApi.getAuthUrl();
-    window.location.href = authUrl;
+    router.push('/api/auth/spotify');
+  };
+
+  // Add an alias for login to match what PlayerSpotify expects
+  const connectToSpotify = () => {
+    login();
   };
 
   // Logout from Spotify
@@ -541,6 +558,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
         volume,
         login,
         logout,
+        connectToSpotify,
         play,
         pause,
         skipToNext,

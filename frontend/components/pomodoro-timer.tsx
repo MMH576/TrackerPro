@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { 
   Play, Pause, RotateCcw, Coffee, Brain, 
   Settings, CheckCircle, Bell, BellOff, Timer, AlertCircle, 
-  ChevronDown, ChevronUp, Music
+  ChevronDown, ChevronUp, Music, ClipboardList
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePomodoroContext } from '@/contexts/pomodoro-context';
@@ -18,9 +18,9 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { TaskManager } from '@/components/task-manager';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import PlayerSpotify, { syncWithPomodoroState } from '@/components/spotify/PlayerSpotify';
-import { SpotifyBrowser } from '@/components/spotify/SpotifyBrowser';
 import { SpotifyProvider } from '@/hooks/use-spotify';
+import PlayerSpotify from '@/components/spotify/PlayerSpotify';
+import SpotifyPomodoroSync from '@/components/spotify/SpotifyPomodoroSync';
 
 // CSS to hide number input spinners
 const hideSpinners = {
@@ -222,13 +222,15 @@ export function PomodoroTimer() {
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Main content area (9/12 cols on md+ screens) */}
         <motion.div 
-          className="md:col-span-2 space-y-6"
+          className="md:col-span-9 space-y-6"
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5 }}
         >
+          {/* Main Timer Card - At the top */}
           <Card className="relative overflow-hidden">
             <CardHeader className="pb-4">
               <div className="flex justify-between items-center">
@@ -327,7 +329,7 @@ export function PomodoroTimer() {
                         r="45"
                         cx="50"
                         cy="50"
-                        style={{ transition: "stroke-dashoffset 0.5s" }}
+                        style={{ transition: "stroke-dashoffset 0.3s" }}
                       />
                     </svg>
                     
@@ -398,12 +400,48 @@ export function PomodoroTimer() {
               </div>
             </CardContent>
           </Card>
-          
-          <TaskManager />
+
+          {/* Spotify Player Section */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg flex items-center">
+                <Music className="mr-2 h-5 w-5" />
+                Music
+              </CardTitle>
+              <CardDescription>Enhance your focus with music</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {spotifyError && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Spotify Error</AlertTitle>
+                  <AlertDescription>{spotifyError}</AlertDescription>
+                </Alert>
+              )}
+              <SpotifyProvider>
+                <PlayerSpotify />
+                <SpotifyPomodoroSync isRunning={isRunning} mode={mode} />
+              </SpotifyProvider>
+            </CardContent>
+          </Card>
+
+          {/* Task Manager - Full width */}
+          <Card className="w-full">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-lg flex items-center">
+                <ClipboardList className="mr-2 h-5 w-5" />
+                Task Manager
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TaskManager />
+            </CardContent>
+          </Card>
         </motion.div>
         
+        {/* Session Info - Right-aligned (3/12 cols on md+ screens) */}
         <motion.div
-          className="space-y-6"
+          className="md:col-span-3 space-y-6"
           initial={{ opacity: 0, x: 10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
@@ -469,58 +507,6 @@ export function PomodoroTimer() {
                   {showSettings ? 'Hide Settings' : 'Edit Settings'}
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <div>
-                <CardTitle className="text-lg flex items-center">
-                  <Music className="mr-2 h-5 w-5" />
-                  Music
-                </CardTitle>
-                <CardDescription>Enhance your focus with music</CardDescription>
-              </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setExpandMusicBrowser(!expandMusicBrowser)}
-                className="h-8 w-8 p-0"
-              >
-                {expandMusicBrowser ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {spotifyError && (
-                <Alert variant="destructive" className="mb-4">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Spotify Error</AlertTitle>
-                  <AlertDescription>{spotifyError}</AlertDescription>
-                </Alert>
-              )}
-              <SpotifyProvider>
-                <PlayerSpotify />
-                {syncWithPomodoroState(isRunning, mode)}
-                
-                <AnimatePresence>
-                  {expandMusicBrowser && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="overflow-hidden"
-                    >
-                      <Separator className="my-4" />
-                      <SpotifyBrowser />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </SpotifyProvider>
             </CardContent>
           </Card>
         </motion.div>

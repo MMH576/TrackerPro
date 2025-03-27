@@ -18,6 +18,9 @@ export default function SpotifyTest() {
   const [allCookies, setAllCookies] = useState<Record<string, string>>({});
   const [spotifyConfig, setSpotifyConfig] = useState<any>(null);
   const [isCheckingConfig, setIsCheckingConfig] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   
   const supabase = createClientComponentClient();
   
@@ -83,6 +86,26 @@ export default function SpotifyTest() {
   useEffect(() => {
     checkSession();
   }, []);
+  
+  useEffect(() => {
+    // Make sure Spotify Web Playback SDK keeps playing even if this component unmounts
+    if (typeof window !== 'undefined' && window.Spotify) {
+      // Store the current state in localStorage when page is unloaded
+      const handleBeforeUnload = () => {
+        if (isAuthenticated && deviceId && isPlaying) {
+          localStorage.setItem('spotify_playing_state', 'playing');
+          localStorage.setItem('spotify_device_id', deviceId);
+        }
+      };
+
+      // Add event listener for page unload
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+    }
+  }, [isAuthenticated, deviceId, isPlaying]);
   
   const handleConnect = () => {
     window.location.href = '/api/auth/spotify';
