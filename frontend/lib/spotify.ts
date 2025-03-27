@@ -5,7 +5,7 @@ export const getAuthUrl = () => {
   const clientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID;
   const redirectUri = encodeURIComponent(process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI || '/api/auth/callback/spotify');
   const scopes = encodeURIComponent('streaming user-read-email user-read-private user-library-read user-library-modify user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative');
-  
+
   return `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}&show_dialog=true`;
 };
 
@@ -33,11 +33,11 @@ export const refreshAccessToken = async (refreshToken: string) => {
       },
       body: JSON.stringify({ refreshToken }),
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to refresh token');
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('Error refreshing token:', error);
@@ -53,11 +53,11 @@ export const getUserPlaylists = async (token: string) => {
         Authorization: `Bearer ${token}`,
       },
     });
-    
+
     if (!response.ok) {
       throw new Error('Failed to fetch playlists');
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('Error fetching playlists:', error);

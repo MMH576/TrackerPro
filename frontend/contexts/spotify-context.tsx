@@ -40,7 +40,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const supabase = useSupabaseClient();
   const { toast } = useToast();
-  
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState<string | null>(null);
@@ -88,10 +88,10 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
       // Playback status updates
       spotifyPlayer.addListener('player_state_changed', state => {
         if (!state) return;
-        
+
         const currentTrackInfo = state.track_window.current_track;
         console.log('Track changed:', currentTrackInfo);
-        
+
         // Create a more detailed track object with all the necessary info
         setCurrentTrack({
           name: currentTrackInfo.name,
@@ -108,7 +108,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
           duration_ms: currentTrackInfo.duration_ms || 0,
           id: currentTrackInfo.id || currentTrackInfo.uri.split(':').pop()
         });
-        
+
         setIsPlaying(!state.paused);
       });
 
@@ -155,7 +155,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
         }
 
         setRefreshToken(data.refresh_token);
-        
+
         // Check if token is expired and refresh if needed
         const now = Date.now();
         if (now >= data.expires_at) {
@@ -167,7 +167,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
           await fetchUserData(data.access_token);
           await fetchPlaylists(data.access_token);
         }
-        
+
         // Load user preferences
         if (data.settings) {
           const settings = JSON.parse(data.settings);
@@ -187,11 +187,11 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
     const handleOAuthCallback = async () => {
       // Don't run on server side
       if (typeof window === 'undefined') return;
-      
+
       const url = new URL(window.location.href);
       const code = url.searchParams.get('code');
       const error = url.searchParams.get('error');
-      
+
       if (error) {
         toast({
           title: 'Spotify Authentication Error',
@@ -201,37 +201,37 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
         router.push('/pomodoro');
         return;
       }
-      
+
       if (code && window.location.pathname === '/callback') {
         try {
           // Exchange code for access token
           const response = await spotifyApi.getAccessToken(code);
-          
+
           if (response.error) {
             throw new Error(response.error_description || 'Failed to authenticate with Spotify');
           }
-          
+
           const { access_token, refresh_token, expires_in } = response;
           const expiresAt = Date.now() + expires_in * 1000;
-          
+
           setAccessToken(access_token);
           setRefreshToken(refresh_token);
           setTokenExpiryTime(expiresAt);
           setIsAuthenticated(true);
-          
+
           // Fetch user data and playlists
           await fetchUserData(access_token);
           await fetchPlaylists(access_token);
-          
+
           // Store tokens in Supabase
           await storeTokensInSupabase(access_token, refresh_token, expiresAt);
-          
+
           toast({
             title: 'Connected to Spotify',
             description: 'Your Spotify account is now linked to TrackerPro',
             variant: 'success'
           });
-          
+
           router.push('/pomodoro');
         } catch (error) {
           console.error('Error during Spotify authentication:', error);
@@ -244,7 +244,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
         }
       }
     };
-    
+
     handleOAuthCallback();
   }, [router]);
 
@@ -256,11 +256,11 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
           Authorization: `Bearer ${token}`
         }
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch user data');
       }
-      
+
       const userData = await response.json();
       setUser({
         id: userData.id,
@@ -285,24 +285,24 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Refresh the Spotify access token
   const refreshSpotifyToken = async (token = refreshToken) => {
     if (!token) return;
-    
+
     try {
       const response = await spotifyApi.refreshAccessToken(token);
-      
+
       if (response.error) {
         throw new Error(response.error_description || 'Failed to refresh token');
       }
-      
+
       const { access_token, expires_in } = response;
       const expiresAt = Date.now() + expires_in * 1000;
-      
+
       setAccessToken(access_token);
       setTokenExpiryTime(expiresAt);
       setIsAuthenticated(true);
-      
+
       // Update token in Supabase
       await storeTokensInSupabase(access_token, token, expiresAt);
-      
+
       return access_token;
     } catch (error) {
       console.error('Error refreshing Spotify token:', error);
@@ -316,15 +316,15 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   const storeTokensInSupabase = async (accessToken: string, refreshToken: string, expiresAt: number) => {
     try {
       if (!supabase) return;
-      
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      
+
       const settings = JSON.stringify({
         volume,
         selectedPlaylistId
       });
-      
+
       const { error } = await supabase
         .from('user_spotify_auth')
         .upsert({
@@ -334,7 +334,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
           expires_at: expiresAt,
           settings
         });
-      
+
       if (error) {
         throw error;
       }
@@ -346,7 +346,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Transfer playback to current device
   const transferPlaybackToCurrentDevice = async (deviceId: string) => {
     if (!accessToken) return;
-    
+
     try {
       await fetch('https://api.spotify.com/v1/me/player', {
         method: 'PUT',
@@ -378,23 +378,23 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       if (!supabase) return;
-      
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      
+
       // Remove tokens from Supabase
       const { error } = await supabase
         .from('user_spotify_auth')
         .delete()
         .eq('user_id', session.user.id);
-      
+
       if (error) {
         throw error;
       }
-      
+
       // Disconnect player
       player?.disconnect();
-      
+
       // Reset state
       setIsAuthenticated(false);
       setAccessToken(null);
@@ -404,7 +404,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
       setIsPlaying(false);
       setPlaylists([]);
       setDeviceId(null);
-      
+
       toast({
         title: 'Logged out',
         description: 'Your Spotify account has been disconnected',
@@ -417,7 +417,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Play a track or resume playback
   const play = async (uri?: string) => {
     if (!accessToken || !deviceId) return;
-    
+
     try {
       if (uri) {
         await spotifyApi.playTrack(accessToken, uri, deviceId);
@@ -440,7 +440,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Pause playback
   const pause = async () => {
     if (!accessToken || !deviceId) return;
-    
+
     try {
       await spotifyApi.pausePlayback(accessToken, deviceId);
       setIsPlaying(false);
@@ -452,7 +452,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Skip to next track
   const skipToNext = async () => {
     if (!accessToken || !deviceId) return;
-    
+
     try {
       await spotifyApi.skipToNext(accessToken, deviceId);
     } catch (error) {
@@ -463,7 +463,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Skip to previous track
   const skipToPrevious = async () => {
     if (!accessToken || !deviceId) return;
-    
+
     try {
       await spotifyApi.skipToPrevious(accessToken, deviceId);
     } catch (error) {
@@ -474,11 +474,11 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Set volume
   const setVolumeRemote = async (volumePercent: number) => {
     if (!accessToken || !deviceId) return;
-    
+
     try {
       await spotifyApi.setVolume(accessToken, volumePercent, deviceId);
       setVolumeState(volumePercent);
-      
+
       // Update settings in Supabase
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
@@ -486,7 +486,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
           volume: volumePercent,
           selectedPlaylistId
         });
-        
+
         await supabase
           .from('user_spotify_auth')
           .update({ settings })
@@ -500,7 +500,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Select playlist
   const selectPlaylist = async (playlistId: string) => {
     setSelectedPlaylistId(playlistId);
-    
+
     // Save preference to Supabase
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -509,13 +509,13 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
           volume,
           selectedPlaylistId: playlistId
         });
-        
+
         await supabase
           .from('user_spotify_auth')
           .update({ settings })
           .eq('user_id', session.user.id);
       }
-      
+
       // Start playing the playlist if player is active
       if (isAuthenticated && deviceId && accessToken) {
         await spotifyApi.startPlaylist(accessToken, playlistId, deviceId);
@@ -529,7 +529,7 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
   // Sync with Pomodoro state
   const syncWithPomodoroState = async (isRunning: boolean, mode: string) => {
     if (!isAuthenticated || !accessToken) return;
-    
+
     try {
       if (isRunning) {
         // Start playback when Pomodoro starts
@@ -575,10 +575,10 @@ export function SpotifyProvider({ children }: { children: React.ReactNode }) {
 
 export function useSpotify() {
   const context = useContext(SpotifyContext);
-  
+
   if (context === undefined) {
     throw new Error('useSpotify must be used within a SpotifyProvider');
   }
-  
+
   return context;
 } 

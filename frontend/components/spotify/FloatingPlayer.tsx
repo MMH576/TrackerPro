@@ -360,6 +360,18 @@ export function FloatingPlayer() {
         time: currentTrack.progressTimestamp || Date.now(),
         position: currentTrack.position_ms || 0
       };
+      
+      // Make sure UI reflects current track
+      setVisible(true);
+      setShowControls(true);
+      
+      // Store track info in localStorage for cross-tab persistence
+      localStorage.setItem('spotify_current_track', JSON.stringify({
+        name: currentTrack.name,
+        id: currentTrack.id,
+        timestamp: Date.now(),
+        isPlaying: isPlaying
+      }));
     }
     
     // Update volume state
@@ -368,66 +380,95 @@ export function FloatingPlayer() {
     } else if (volume > 0) {
       setIsMuted(false);
     }
-    
-    // Ensure visibility when track changes
-    if (currentTrack) {
-      setVisible(true);
-      
-      // Show controls when a track is loaded
-      setShowControls(true);
-      
-      // Store track info in localStorage for cross-tab persistence
-      localStorage.setItem('spotify_current_track', JSON.stringify({
-        name: currentTrack.name,
-        id: currentTrack.id,
-        timestamp: Date.now()
-      }));
-    }
   }, [currentTrack, isPlaying, volume]);
 
-  // Improve the sync method by using a ref for track data instead of dependencies
+  // Add aggressive polling for track state
   useEffect(() => {
-    // Only proceed if authenticated
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !spotifyClient) return;
     
-    // Update track and playing refs
-    trackRef.current = {
-      duration: currentTrack?.duration_ms || 1,
-      isPlaying: isPlaying
-    };
+    let mounted = true;
+    let pollTimer: NodeJS.Timeout;
     
-    // Sync function that uses the existing refs instead of creating new ones
-    const syncState = () => {
-      // Update local state
-      setLocalPlayingState(trackRef.current.isPlaying);
-      
-      // Update visibility based on current values
-      if (currentTrack) {
-        setVisible(true);
-        setShowControls(true);
+    const fetchCurrentState = async () => {
+      try {
+        // Get current playback state directly from Spotify API
+        const playbackState = await spotifyClient.getPlaybackState();
+        
+        if (!mounted || !playbackState) return;
+        
+        // Force sync playing state
+        if (playbackState.is_playing !== localPlayingState) {
+          setLocalPlayingState(playbackState.is_playing);
+        }
+        
+        // Update progress tracking
+        if (playbackState.progress_ms !== undefined) {
+          lastUpdateRef.current = {
+            time: Date.now(),
+            position: playbackState.progress_ms
+          };
+        }
+      } catch (error) {
+        console.debug('Polling error (handled):', error);
+      } finally {
+        // Set up next poll with dynamic interval
+        if (mounted) {
+          const pollInterval = localPlayingState ? 2000 : 5000; // Poll more frequently when playing
+          pollTimer = setTimeout(fetchCurrentState, pollInterval);
+        }
       }
     };
     
-    // Run immediately and set interval
-    syncState();
-    const interval = setInterval(syncState, 1000);
+    // Initial fetch
+    fetchCurrentState();
     
-    return () => clearInterval(interval);
-  }, [isAuthenticated, currentTrack, isPlaying]); // Only depend on authentication status and track changes
+    return () => {
+      mounted = false;
+      clearTimeout(pollTimer);
+    };
+  }, [isAuthenticated, spotifyClient, localPlayingState]);
 
-  // Add listener for global Spotify state updates with stable dependencies
+  // Add immediate re-sync when visibility changes
   useEffect(() => {
-    // Only proceed if authenticated 
-    if (!isAuthenticated) return;
+    // Handle visibility change to ensure sync when tab becomes visible
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && spotifyClient) {
+        try {
+          // Refresh state from Spotify when tab becomes visible
+          const playbackState = await spotifyClient.getPlaybackState();
+          
+          if (playbackState) {
+            // Force UI update
+            setLocalPlayingState(playbackState.is_playing);
+            
+            // Update progress
+            if (playbackState.progress_ms !== undefined) {
+              lastUpdateRef.current = {
+                time: Date.now(),
+                position: playbackState.progress_ms
+              };
+            }
+          }
+        } catch (error) {
+          console.debug('Visibility sync error (handled):', error);
+        }
+      }
+    };
     
-    // Update the ref to keep it in sync
-    updateRef.current = lastUpdateRef.current;
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [spotifyClient]);
+
+  // Enhanced global state change listener
+  useEffect(() => {
     const handleSpotifyStateChange = (event: CustomEvent<any>) => {
       const data = event.detail;
       if (!data) return;
       
-      // Update local state with the global state
+      // Force immediate UI updates
       if (data.isPlaying !== undefined) {
         setLocalPlayingState(data.isPlaying);
       }
@@ -439,30 +480,30 @@ export function FloatingPlayer() {
         
         // Update progress tracking
         if (data.timestamp) {
-          // Update both the ref we created and the original ref
-          updateRef.current = {
+          lastUpdateRef.current = {
             time: data.timestamp,
             position: data.currentTrack.position_ms || 0
           };
-          
-          lastUpdateRef.current = updateRef.current;
         }
-      }
-      
-      // Show music controls when playing
-      if (data.isPlaying) {
-        setShowControls(true);
+        
+        // Store in localStorage for cross-component sync
+        localStorage.setItem('spotify_current_track', JSON.stringify({
+          name: data.currentTrack.name,
+          id: data.currentTrack.id,
+          timestamp: Date.now(),
+          isPlaying: data.isPlaying
+        }));
       }
     };
     
-    // Add the event listener
+    // Add the event listener - non-typed to handle the custom event
     window.addEventListener('spotify-state-change', handleSpotifyStateChange as EventListener);
     
     // Clean up
     return () => {
       window.removeEventListener('spotify-state-change', handleSpotifyStateChange as EventListener);
     };
-  }, [isAuthenticated]); // Only depend on authentication status
+  }, []);
 
   // Add error detection and recovery
   useEffect(() => {
