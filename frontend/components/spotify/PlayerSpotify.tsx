@@ -304,12 +304,7 @@ export default function PlayerSpotify() {
   // Add state to track seeking status
   const [isSeeking, setIsSeeking] = useState(false);
 
-  // Create a proper value change handler with the correct type
-  const handleProgressChange = (value: number[]) => {
-    setProgressValue(value[0]);
-  };
-
-  // Add a ref to track the previous track ID for detecting track changes
+  // Create a ref to track the previous track ID for detecting track changes
   const previousTrackIdRef = useRef<string | null>(null);
 
   // Add another effect specifically to handle track changes
@@ -351,65 +346,6 @@ export default function PlayerSpotify() {
     }
   }, [currentTrack?.id, deviceId]);
 
-  // Update the handleSeek function to use the shared lastUpdateRef
-  const handleSeek = async (value: number[]) => {
-    if (!currentTrack || !currentTrack.duration_ms || !deviceId) return;
-    
-    // Set seeking state for visual feedback
-    setIsSeeking(true);
-    
-    // Calculate the position in ms
-    const position = Math.floor((value[0] / 100) * currentTrack.duration_ms);
-    
-    // Update local state immediately for UI responsiveness
-    setProgressValue(value[0]);
-    
-    // Store the new position and timestamp in local tracking variables
-    if (currentTrack) {
-      // Update the track object with new position info for smoother progress
-      const updatedTrack = {
-        ...currentTrack,
-        position_ms: position,
-        progressTimestamp: Date.now()
-      };
-      
-      // Update our shared ref immediately for smooth progress tracking
-      lastUpdateRef.current = {
-        time: Date.now(),
-        position: position
-      };
-      
-      // This trick forces the progress tracking effect to use the new position
-      // without waiting for a state update from Spotify
-      setCurrentTrack(updatedTrack);
-    }
-    
-    try {
-      // Use the SpotifyClient dynamically
-      if (!spotifyClient.current) {
-        spotifyClient.current = new SpotifyClient();
-      }
-      
-      // Call the seek method with the correct parameters
-      await spotifyClient.current.seek(deviceId, position);
-    } catch (error) {
-      console.error('Error seeking:', error);
-    } finally {
-      // Clear seeking state after a small delay
-      setTimeout(() => setIsSeeking(false), 300);
-    }
-  };
-
-  // Add a separate handler for the seek start
-  const handleSeekStart = () => {
-    setIsSeeking(true);
-  };
-
-  // Add a separate handler for the seek end
-  const handleSeekEnd = (value: number[]) => {
-    handleSeek(value);
-  };
-
   // Create visibility tracking for floating player
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -430,42 +366,92 @@ export default function PlayerSpotify() {
   // Add a ref to track if volume is being adjusted
   const isAdjustingVolume = useRef(false);
 
-  // Simplified volume change handler with instant feedback
-  const handleVolumeChange = useCallback((value: number[]) => {
-    const newVolume = value[0];
-    
-    // Update UI state instantly
-    setDebouncedVolume(newVolume);
-    setIsVolumeAdjusting(true);
-    
-    // Apply volume change immediately without waiting
-    setVolume(newVolume);
-    
-    // Clear any previous timeout to hide the volume UI
-    if (volumeFlagTimeout.current) {
-      clearTimeout(volumeFlagTimeout.current);
-    }
-    
-    // Set a timeout to hide the volume UI after adjustment
-    volumeFlagTimeout.current = setTimeout(() => {
-      setIsVolumeAdjusting(false);
-      volumeFlagTimeout.current = null;
-    }, 800);
-  }, [setVolume]);
+  // Create a ref for tracking volume adjustment state timeout
+  const volumeFlagTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  // Add a debounced volume change handler to prevent playback interruptions
-  const [debouncedVolume, setDebouncedVolume] = useState(volume);
+  // Update the play/pause handler to be compatible with the simplified volume control
+  const handlePlayPauseToggle = useCallback(() => {
+    // Update the local state immediately for UI feedback
+    setLocalPlayingState(!localPlayingState);
+    
+    // Trigger the actual toggle using the manual function
+    manualTogglePlayPause().catch(() => {
+      // If there's an error, revert the local state
+      setLocalPlayingState(localPlayingState);
+    });
+  }, [manualTogglePlayPause, localPlayingState]);
 
-  // Apply the volume change to Spotify with a slight delay
+  // Clean up timeouts on unmount
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (debouncedVolume !== volume) {
-        setVolume(debouncedVolume);
+    return () => {
+      if (volumeFlagTimeout.current) {
+        clearTimeout(volumeFlagTimeout.current);
       }
-    }, 200); // 200ms delay before applying volume change
+    };
+  }, []);
 
-    return () => clearTimeout(timeoutId);
-  }, [debouncedVolume, setVolume, volume]);
+  // Make sure the spotifyClient is available
+  const spotifyClient = useRef<SpotifyClient | null>(null);
+
+  // Initialize the Spotify client if needed
+  useEffect(() => {
+    if (!spotifyClient.current) {
+      // Import the SpotifyClient dynamically
+      import('@/utils/spotify-client').then(({ SpotifyClient }) => {
+        spotifyClient.current = new SpotifyClient();
+      });
+    }
+  }, []);
+
+  // Get the playlist ID safely
+  const getPlaylistId = (playlist: any): string => {
+    return playlist?.id ? String(playlist.id) : '';
+  };
+
+  // Add visibility change handling to ensure progress tracking works when switching tabs
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // When the page becomes visible again, update our reference time
+      // to prevent a jump in progress calculation
+      if (document.visibilityState === 'visible' && isPlaying && currentTrack) {
+        // Reset the lastUpdateRef to the current time but keep the position
+        // This prevents progress from jumping ahead when returning to the tab
+        const currentPosition = lastUpdateRef.current.position;
+        lastUpdateRef.current = {
+          time: Date.now(),
+          position: currentPosition
+        };
+        
+        // Also fetch the actual position from Spotify to correct any drift
+        if (spotifyClient.current && deviceId) {
+          spotifyClient.current.getProgress(deviceId)
+            .then((progress: number | null) => {
+              if (progress !== null) {
+                // Update our tracking with the actual position
+                lastUpdateRef.current = {
+                  time: Date.now(),
+                  position: progress
+                };
+                
+                // Update the UI
+                if (currentTrack?.duration_ms) {
+                  setProgressValue((progress / currentTrack.duration_ms) * 100);
+                }
+              }
+            })
+            .catch(error => {
+              console.debug('Failed to get progress after visibility change:', error);
+            });
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isPlaying, currentTrack, deviceId]);
 
   // Enhance the error suppression to specifically target the PlayLoad 404 errors
   useEffect(() => {
@@ -554,93 +540,6 @@ export default function PlayerSpotify() {
       console.error = originalConsoleError;
       window.onerror = originalOnError;
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
-    };
-  }, []);
-
-  // Make sure the spotifyClient is available
-  const spotifyClient = useRef<SpotifyClient | null>(null);
-
-  // Initialize the Spotify client if needed
-  useEffect(() => {
-    if (!spotifyClient.current) {
-      // Import the SpotifyClient dynamically
-      import('@/utils/spotify-client').then(({ SpotifyClient }) => {
-        spotifyClient.current = new SpotifyClient();
-      });
-    }
-  }, []);
-
-  // Get the playlist ID safely
-  const getPlaylistId = (playlist: any): string => {
-    return playlist?.id ? String(playlist.id) : '';
-  };
-
-  // Add visibility change handling to ensure progress tracking works when switching tabs
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      // When the page becomes visible again, update our reference time
-      // to prevent a jump in progress calculation
-      if (document.visibilityState === 'visible' && isPlaying && currentTrack) {
-        // Reset the lastUpdateRef to the current time but keep the position
-        // This prevents progress from jumping ahead when returning to the tab
-        const currentPosition = lastUpdateRef.current.position;
-        lastUpdateRef.current = {
-          time: Date.now(),
-          position: currentPosition
-        };
-        
-        // Also fetch the actual position from Spotify to correct any drift
-        if (spotifyClient.current && deviceId) {
-          spotifyClient.current.getProgress(deviceId)
-            .then((progress: number | null) => {
-              if (progress !== null) {
-                // Update our tracking with the actual position
-                lastUpdateRef.current = {
-                  time: Date.now(),
-                  position: progress
-                };
-                
-                // Update the UI
-                if (currentTrack?.duration_ms) {
-                  setProgressValue((progress / currentTrack.duration_ms) * 100);
-                }
-              }
-            })
-            .catch(error => {
-              console.debug('Failed to get progress after visibility change:', error);
-            });
-        }
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [isPlaying, currentTrack, deviceId]);
-
-  // Add a ref for tracking volume adjustment state timeout
-  const volumeFlagTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  // Update the play/pause handler to be compatible with the simplified volume control
-  const handlePlayPauseToggle = useCallback(() => {
-    // Update the local state immediately for UI feedback
-    setLocalPlayingState(!localPlayingState);
-    
-    // Trigger the actual toggle using the manual function
-    manualTogglePlayPause().catch(() => {
-      // If there's an error, revert the local state
-      setLocalPlayingState(localPlayingState);
-    });
-  }, [manualTogglePlayPause, localPlayingState]);
-
-  // Clean up timeouts on unmount
-  useEffect(() => {
-    return () => {
-      if (volumeFlagTimeout.current) {
-        clearTimeout(volumeFlagTimeout.current);
-      }
     };
   }, []);
 
@@ -926,15 +825,12 @@ export default function PlayerSpotify() {
                     
                     <div className="space-y-4 mt-3 mb-2">
                       <div className="space-y-2">
-                        <Slider 
-                          value={[progressValue]} 
-                          min={0} 
-                          max={100} 
-                          step={0.1} 
-                          className={cn("w-full h-1.5", isSeeking && "opacity-70")}
-                          onValueChange={handleProgressChange}
-                          onValueCommit={handleSeekEnd}
-                          onPointerDown={handleSeekStart}
+                        {/* Using non-interactive Progress component instead of Slider */}
+                        {/* This is intentional to prevent users from seeking to different parts of the music */}
+                        <Progress 
+                          value={progressValue} 
+                          className="w-full h-1.5"
+                          aria-readonly="true"
                         />
                         
                         <div className="flex justify-between text-xs text-muted-foreground">
@@ -960,12 +856,29 @@ export default function PlayerSpotify() {
                         </Button>
                         
                         <Slider
-                          value={[debouncedVolume]}
+                          value={[volume]}
                           min={0}
                           max={100}
                           step={1}
                           className={cn("w-24", isVolumeAdjusting && "opacity-100")}
-                          onValueChange={handleVolumeChange}
+                          onValueChange={(value) => {
+                            // Set UI state for feedback
+                            setIsVolumeAdjusting(true);
+                            
+                            // Apply volume change immediately - no debouncing
+                            setVolume(value[0]);
+                            
+                            // Clear any previous timeout to hide the volume UI
+                            if (volumeFlagTimeout.current) {
+                              clearTimeout(volumeFlagTimeout.current);
+                            }
+                            
+                            // Set a timeout to hide the volume UI after adjustment
+                            volumeFlagTimeout.current = setTimeout(() => {
+                              setIsVolumeAdjusting(false);
+                              volumeFlagTimeout.current = null;
+                            }, 800);
+                          }}
                         />
                       </div>
                       

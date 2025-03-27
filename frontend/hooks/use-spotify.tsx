@@ -681,28 +681,43 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [deviceId]);
 
-  // Completely non-blocking volume control with no delays
+  // Further optimize volume change handling for maximum responsiveness
   const handleVolumeChange = useCallback((newVolume: number) => {
-    // Update local state immediately for UI responsiveness
+    // First, update UI state for immediate feedback
     setVolumeLevel(newVolume);
     
-    // Set local player volume first (most important for preventing interruptions)
+    // Next, update local player volume directly for instant audible feedback
+    // This is the most important part for responsive volume control
     if (playerRef.current) {
       try {
+        // Set immediately with no delay
         playerRef.current.setVolume(newVolume / 100);
       } catch (e) {
-        // Ignore local player errors
+        // Silently ignore player errors
       }
     }
     
-    // Only proceed with API call if we have the required info
-    if (!deviceId || !spotifyClient.current) return;
-    
-    // Don't await or use timeouts for volume changes - fire and forget
-    spotifyClient.current.setVolume(deviceId, newVolume).catch(error => {
-      // Silently handle all volume errors
-      console.debug('Volume API error (safely ignored):', error);
-    });
+    // Finally, update remote API in the background without blocking
+    // Only proceed if we have device ID and client
+    if (deviceId && spotifyClient.current) {
+      // Fire and forget - never wait for the API
+      // We already updated the local player volume, which is what matters for UX
+      const deviceIdCopy = deviceId; // Capture current value to avoid closure issues
+      
+      // Using queueMicrotask to slightly prioritize this over regular timeouts
+      // but still keep it non-blocking for the UI thread
+      queueMicrotask(() => {
+        try {
+          spotifyClient.current?.setVolume(deviceIdCopy, newVolume)
+            .catch(err => {
+              // Completely silence API errors for volume to prevent interruptions
+              console.debug('Volume API silent fail (expected):', err);
+            });
+        } catch (e) {
+          // Double error handling to absolutely ensure no volume errors propagate
+        }
+      });
+    }
   }, [deviceId]);
 
   // Add a function specifically for manual control by the user

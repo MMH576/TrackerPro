@@ -337,45 +337,58 @@ export class SpotifyClient {
     }
   }
 
-  // Completely non-blocking volume control that never disrupts playback
+  // Ultra-responsive volume control optimized for zero playback interruption
   async setVolume(deviceId: string, volumePercent: number): Promise<void> {
     try {
       // Validate the volume is within range
       const validVolume = Math.max(0, Math.min(100, Math.round(volumePercent)));
       
-      // Always update local player volume first for immediate feedback
-      // This is the key to preventing playback interruption
+      // HIGHEST PRIORITY: Update local player volume first and as fast as possible
+      // This provides immediate audible feedback regardless of API state
       if (typeof window !== 'undefined' && window.Spotify) {
         try {
           const spotifyWindow = window as any;
+          
+          // First approach - SDK player instances
           if (spotifyWindow.Spotify?.Player?._instances?.length > 0) {
             const player = spotifyWindow.Spotify.Player._instances[0];
             if (player && typeof player.setVolume === 'function') {
               player.setVolume(validVolume / 100);
             }
           }
+            
+          // Second approach - try to access the player directly through any available method
+          if (spotifyWindow.Spotify?.Player?.player) {
+            const player = spotifyWindow.Spotify.Player.player;
+            if (typeof player.setVolume === 'function') {
+              player.setVolume(validVolume / 100);
+            }
+          }
         } catch (localError) {
-          // Ignore local player errors
+          // Silently ignore any local player errors
+          // Local player update is optional, API update is the fallback
         }
       }
       
-      // Create the API URL but don't await the call
+      // LOWEST PRIORITY: Update via API
+      // This is completely background - we never block, wait, or throw for volume changes
       const url = `${this.baseUrl}/me/player/volume?device_id=${deviceId}&volume_percent=${validVolume}`;
       
-      // Fire and forget approach for volume changes - don't block playback for any reason
-      this.fetchWithAuth(url, {
-        method: 'PUT'
-      }).catch(error => {
-        // Silently ignore all errors for volume changes
-        // We've already set the local volume, so the API call is just for synchronization
-        console.debug('Background volume sync error (ignored):', error);
-      });
+      // Fire and completely forget - even wrap the fetch in its own try/catch
+      try {
+        // Use a non-awaited fetch to prevent any possible blocking
+        this.fetchWithAuth(url, { method: 'PUT' })
+          .catch(() => {}); // Explicitly silence all promise rejections
+      } catch (apiError) {
+        // Double error handling to absolutely ensure volume never affects playback
+      }
       
-      // Return immediately after setting local volume, don't wait for API
+      // Return immediately after setting local volume
+      // Never wait for API call to complete
       return;
     } catch (error) {
-      // Log but never throw errors for volume changes
-      console.debug('Volume control error (handled):', error);
+      // Triple error handling - absolutely never throw from volume changes
+      console.debug('Volume error safely handled:', error);
       return;
     }
   }

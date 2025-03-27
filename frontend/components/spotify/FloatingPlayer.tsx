@@ -251,7 +251,9 @@ export function FloatingPlayer() {
           <p className="text-xs text-muted-foreground truncate">
             {currentTrack.artists?.map(a => a.name).join(', ')}
           </p>
-          <Progress value={progressValue} className="h-1 mt-1" />
+          {/* Using non-interactive Progress component instead of Slider */}
+          {/* This is intentional to prevent users from seeking to different parts of the music */}
+          <Progress value={progressValue} className="h-1 mt-1" aria-readonly="true" />
         </div>
       </div>
       <div className="flex justify-center gap-2 mt-2">
@@ -279,6 +281,19 @@ export function FloatingPlayer() {
         >
           <SkipForward className="h-4 w-4" />
         </Button>
+      </div>
+      <div className="mt-2">
+        <Slider
+          value={[volume]}
+          min={0}
+          max={100}
+          step={1}
+          className="w-full h-1"
+          onValueChange={(value) => {
+            // Apply volume change immediately - no debouncing
+            setVolume(value[0]);
+          }}
+        />
       </div>
     </Card>
   );
