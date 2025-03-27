@@ -3,6 +3,7 @@
 import React, { createContext, useState, useContext, useEffect, useRef, useCallback } from 'react';
 import Cookies from 'js-cookie';
 import { SpotifyClient, Playlist, Track } from '@/utils/spotify-client';
+import { useRouter, usePathname } from 'next/navigation';
 
 type SpotifyContextType = {
   isAuthenticated: boolean;
@@ -32,6 +33,7 @@ type SpotifyContextType = {
   isManualControl: boolean;
   resetManualControl: () => void;
   getManualControlStatus: () => boolean;
+  spotifyClient: SpotifyClient | null;
 };
 
 const defaultContext: SpotifyContextType = {
@@ -62,6 +64,7 @@ const defaultContext: SpotifyContextType = {
   isManualControl: false,
   resetManualControl: () => {},
   getManualControlStatus: () => false,
+  spotifyClient: null,
 };
 
 const SpotifyContext = createContext<SpotifyContextType>(defaultContext);
@@ -79,6 +82,9 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isPlaying, setIsPlaying] = useState(false);
   const [volumeLevel, setVolumeLevel] = useState(50);
   const [shuffleState, setShuffleState] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const pathname = usePathname();
+  const previousPathRef = useRef<string | null>(null);
   
   const spotifyClient = useRef<SpotifyClient | null>(null);
   const playerRef = useRef<Spotify.Player | null>(null);
@@ -158,20 +164,20 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const loadSpotifySDK = () => {
       // Only load the SDK if it's not already loaded
       if (!window.Spotify && !document.getElementById('spotify-player-script')) {
-        const script = document.createElement('script');
+    const script = document.createElement('script');
         script.id = 'spotify-player-script';
-        script.src = 'https://sdk.scdn.co/spotify-player.js';
-        script.async = true;
-        
-        document.body.appendChild(script);
-        
-        window.onSpotifyWebPlaybackSDKReady = () => {
+    script.src = 'https://sdk.scdn.co/spotify-player.js';
+    script.async = true;
+
+    document.body.appendChild(script);
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
           console.log('Spotify Web Playback SDK is ready');
           setIsPlayerReady(true);
         };
       } else if (window.Spotify) {
         console.log('Spotify SDK already loaded');
-        setIsPlayerReady(true);
+      setIsPlayerReady(true);
       }
     };
     
@@ -270,37 +276,37 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
           clearTimeout(loadingTimeout);
           return;
         }
-        
-        const player = new window.Spotify.Player({
-          name: 'TrackerPro Web Player',
+
+          const player = new window.Spotify.Player({
+            name: 'TrackerPro Web Player',
           getOAuthToken: (callback: (token: string) => void) => {
             callback(accessToken);
           },
           volume: volumeLevel / 100
-        });
-        
-        // Error handling
+          });
+
+          // Error handling
         player.addListener('initialization_error', ({ message }) => {
-          console.error('Spotify player initialization error:', message);
-          setError(`Player initialization error: ${message}`);
+            console.error('Spotify player initialization error:', message);
+            setError(`Player initialization error: ${message}`);
           setIsLoading(false);
           clearTimeout(loadingTimeout);
           // Increment attempt count on errors to avoid infinite loops
           playerInitAttempts.current += 1;
-        });
-        
+          });
+
         player.addListener('authentication_error', ({ message }) => {
-          console.error('Spotify player authentication error:', message);
-          setError(`Player authentication error: ${message}`);
+            console.error('Spotify player authentication error:', message);
+            setError(`Player authentication error: ${message}`);
           setIsLoading(false);
           clearTimeout(loadingTimeout);
           // Authentication errors - likely need to reconnect
           // Increment attempt count on errors to avoid infinite loops
           playerInitAttempts.current += 1;
-        });
-        
+          });
+
         player.addListener('account_error', ({ message }) => {
-          console.error('Spotify player account error:', message);
+            console.error('Spotify player account error:', message);
           setError(`Player account error: ${message}`);
           setIsLoading(false);
           clearTimeout(loadingTimeout);
@@ -309,31 +315,52 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         });
         
         player.addListener('playback_error', ({ message }) => {
-          console.error('Spotify player playback error:', message);
-          setError(`Playback error: ${message}`);
-        });
-        
+            console.error('Spotify player playback error:', message);
+            setError(`Playback error: ${message}`);
+          });
+
         // Ready handling
-        player.addListener('ready', ({ device_id }) => {
+        player.addListener('ready', async ({ device_id }) => {
           console.log('Spotify player ready with device ID:', device_id);
           setDeviceId(device_id);
           setIsLoading(false);
           clearTimeout(loadingTimeout);
           
-          // Transfer playback to this device
+          // Transfer playback to this device with improved error handling
           if (spotifyClient.current) {
-            // Wrap in a try/catch to prevent uncaught promise rejections
             try {
-              spotifyClient.current.transferPlayback(device_id)
-                .then(() => console.log('Playback transferred to web player'))
-                .catch(e => {
-                  // Log but continue - transfer is not critical as long as device exists
-                  console.error('Failed to transfer playback:', e);
-                  console.log('Continuing anyway - playback should still work');
-                  // Don't set error state as this is non-critical
-                });
+              // First try the standard transfer
+              await spotifyClient.current.transferPlayback(device_id, false);
+              
+              // If that fails silently, try our reconnection method
+              setTimeout(async () => {
+                // Verify the device is active
+                try {
+                  // Strict null check for TypeScript
+                  const client = spotifyClient.current;
+                  if (!client) return;
+                  
+                  // Verify the device is properly connected
+                  const isVerified = await client.verifyDevice(device_id);
+                  
+                  if (!isVerified) {
+                    console.log('Device verification failed, trying reconnection...');
+                    // Try the new reconnection method with backoff
+                    // Another null check for TypeScript
+                    const reconnectClient = spotifyClient.current;
+                    if (reconnectClient) {
+                      await reconnectClient.reconnectDevice(device_id);
+                    }
+                  }
+                } catch (verifyError) {
+                  console.warn('Device verification error (handled):', verifyError);
+                }
+              }, 2000);
             } catch (error) {
-              console.error('Error during transfer playback call:', error);
+              // Log but continue - transfer is not critical as long as device exists
+              console.error('Failed to transfer playback:', error);
+              console.log('Continuing anyway - playback should still work');
+              // Don't set error state as this is non-critical
             }
           }
         });
@@ -374,7 +401,8 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
             // Update progress timestamp to enable accurate timeline tracking
             const progressTimestamp = Date.now();
             
-            setCurrentTrack({
+            // Create a consistent track object to share across all components
+            const trackObject = {
               id: trackId,
               name: current_track.name,
               uri: current_track.uri,
@@ -394,13 +422,34 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 id: artist.uri.split(':').pop() || '',
                 name: artist.name
               }))
-            });
+            };
+            
+            // Store critical playback information in localStorage for synchronization
+            try {
+              localStorage.setItem('spotify_current_track_info', JSON.stringify({
+                id: trackId,
+                name: current_track.name,
+                position: position,
+                timestamp: progressTimestamp,
+                isPlaying: !state.paused
+              }));
+            } catch (e) {
+              // Ignore localStorage errors
+            }
+            
+            // Update the track in state
+            setCurrentTrack(trackObject);
           } else {
             setCurrentTrack(null);
+            // Clean up localStorage if no track
+            localStorage.removeItem('spotify_current_track_info');
           }
           
           // Immediately update playing state to avoid UI lag
           setIsPlaying(!state.paused);
+          
+          // Also store playing state for cross-component sync
+          localStorage.setItem('spotify_is_playing', !state.paused ? 'true' : 'false');
         });
         
         // Connect and store the player
@@ -460,11 +509,11 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         
         // Increment initialization attempts
         playerInitAttempts.current += 1;
-      }
-    };
-    
-    initializePlayer();
-    
+        }
+      };
+
+      initializePlayer();
+
     // Cleanup function
     return () => {
       clearTimeout(loadingTimeout);
@@ -538,21 +587,30 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setSelectedPlaylist(playlist);
   }, []);
 
-  // Play a specific playlist
+  // Enhanced play playlist function with recovery mechanisms
   const playPlaylist = useCallback(async (playlist: Playlist, offset: number = 0) => {
     if (!deviceId || !spotifyClient.current) return;
     
     try {
       setError(null);
       
-      // First try to ensure the device is ready by transferring playback to it
+      // First ensure the device is ready
       try {
-        await spotifyClient.current.transferPlayback(deviceId);
-        // Small delay to ensure transfer completes
-        await new Promise(resolve => setTimeout(resolve, 800));
-      } catch (transferError) {
-        // Log but continue - transfer is not critical as long as device exists
-        console.log('Transfer attempt before playback failed (continuing):', transferError);
+        // Check if device is active before attempting to play
+        const isActive = await spotifyClient.current.verifyDevice(deviceId);
+        
+        if (!isActive) {
+          // If not active, try to reconnect it first
+          console.log('Device not active, attempting reconnection before playing');
+          const reconnected = await spotifyClient.current.reconnectDevice(deviceId);
+          
+          if (!reconnected) {
+            console.warn('Device reconnection failed, still trying to play');
+          }
+        }
+      } catch (deviceError) {
+        // Log but continue - we'll still try to play
+        console.warn('Device check before playing failed (continuing):', deviceError);
       }
       
       // Now try to play with retry logic built in
@@ -578,16 +636,28 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setError('Spotify server error. Please try again in a moment.');
       } else if (err.message.includes('Device not found')) {
         setError('Playback device not available. Please refresh the page.');
+      } else if (err.message.includes('404')) {
+        // Special handling for 404 errors which are common with Spotify
+        setError('Spotify service unavailable. Please try again in a moment.');
+        
+        // Try to recover by reconnecting the device
+        try {
+          if (spotifyClient.current) {
+            await spotifyClient.current.reconnectDevice(deviceId);
+          }
+        } catch (recoveryErr) {
+          console.error('Recovery attempt failed:', recoveryErr);
+        }
       } else {
         setError(`Failed to play: ${err.message}`);
       }
     }
-  }, [deviceId]);
+  }, [deviceId, setError]);
 
   // Toggle play/pause
   const togglePlayPause = useCallback(async () => {
     if (!deviceId || !spotifyClient.current) return;
-    
+
     try {
       // Prevent multiple rapid toggles by using a local state flag
       if (isTogglingPlayback.current) return;
@@ -629,7 +699,7 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Next track
   const nextTrack = useCallback(async () => {
     if (!deviceId || !spotifyClient.current) return;
-    
+
     try {
       setError(null);
       await spotifyClient.current.next(deviceId);
@@ -642,7 +712,7 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Previous track
   const previousTrack = useCallback(async () => {
     if (!deviceId || !spotifyClient.current) return;
-    
+
     try {
       setError(null);
       await spotifyClient.current.previous(deviceId);
@@ -778,6 +848,221 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return isManualControl.current;
   }, []);
 
+  // Add effect to detect route changes and preserve playback
+  useEffect(() => {
+    if (!previousPathRef.current) {
+      previousPathRef.current = pathname;
+      return;
+    }
+
+    // If pathname changed, we've navigated
+    if (previousPathRef.current !== pathname) {
+      console.log(`Route changed from ${previousPathRef.current} to ${pathname}`);
+      
+      // Store if we were playing before the navigation
+      if (isPlaying && currentTrack) {
+        console.log('Music was playing during navigation, storing state');
+        localStorage.setItem('spotify_playing_during_navigation', 'true');
+        localStorage.setItem('spotify_last_track_uri', currentTrack.uri);
+        localStorage.setItem('spotify_last_route_change', Date.now().toString());
+      }
+      
+      previousPathRef.current = pathname;
+      
+      // Check playback state after navigation (with delay to let components mount)
+      const checkPlaybackAfterNavigation = async () => {
+        try {
+          // Wait for UI to stabilize after navigation
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          const wasPlayingBeforeNavigation = localStorage.getItem('spotify_playing_during_navigation') === 'true';
+          
+          if (wasPlayingBeforeNavigation && !isPlaying && deviceId && spotifyClient.current) {
+            console.log('Detected music stopped after navigation, attempting to resume');
+            
+            // Get the last track URI
+            const lastTrackUri = localStorage.getItem('spotify_last_track_uri');
+            
+            if (lastTrackUri) {
+              console.log('Resuming last track after navigation:', lastTrackUri);
+              try {
+                await spotifyClient.current.play(deviceId, {
+                  uris: [lastTrackUri],
+                }, true);
+                
+                // Re-check playback state
+                setTimeout(async () => {
+                  if (spotifyClient.current) {
+                    const state = await spotifyClient.current.getPlaybackState();
+                    if (state && !state.is_playing) {
+                      console.log('Second attempt to resume playback');
+                      await spotifyClient.current.play(deviceId, {}, true);
+                    }
+                  }
+                }, 1000);
+              } catch (error) {
+                console.error('Failed to resume playback after navigation:', error);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking playback after navigation:', error);
+        }
+      };
+      
+      if (deviceId && spotifyClient) {
+        checkPlaybackAfterNavigation();
+      }
+    }
+  }, [pathname, isPlaying, currentTrack, deviceId, spotifyClient]);
+
+  // Handle tab visibility changes
+  useEffect(() => {
+    if (!spotifyClient.current || !deviceId) return;
+
+    const handleVisibilityChange = async () => {
+      try {
+        if (document.visibilityState === 'visible') {
+          console.log('Tab became visible, checking playback state');
+          
+          const wasPlayingBeforeHidden = localStorage.getItem('spotify_playing_when_hidden') === 'true';
+          
+          if (spotifyClient.current) {
+            const playbackState = await spotifyClient.current.getPlaybackState();
+            
+            // If music was playing when tab was hidden but isn't playing now
+            if (wasPlayingBeforeHidden && playbackState && !playbackState.is_playing) {
+              console.log('Music was playing before tab was hidden, attempting to resume');
+              await spotifyClient.current.play(deviceId, {}, true);
+            }
+          }
+          
+          // Clear the flag
+          localStorage.removeItem('spotify_playing_when_hidden');
+        } else if (document.visibilityState === 'hidden') {
+          // Store if we were playing when tab was hidden
+          if (isPlaying) {
+            console.log('Tab hidden while music was playing, storing state');
+            localStorage.setItem('spotify_playing_when_hidden', 'true');
+          }
+        }
+      } catch (error) {
+        console.error('Error handling visibility change:', error);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [deviceId, isPlaying, spotifyClient]);
+
+  // Create a mechanism for global state updates across components
+  // Set up a custom event for Spotify state updates
+  const createSpotifyStateChangeEvent = (data: any) => {
+    try {
+      const event = new CustomEvent('spotify-state-change', { 
+        detail: data,
+        bubbles: true
+      });
+      window.dispatchEvent(event);
+    } catch (e) {
+      console.debug('Error dispatching spotify state event:', e);
+    }
+  };
+
+  // Use the event mechanism when state changes
+  useEffect(() => {
+    // Broadcast state changes to all components
+    if (isAuthenticated) {
+      createSpotifyStateChangeEvent({
+        isPlaying,
+        currentTrack,
+        volume: volumeLevel,
+        deviceId,
+        timestamp: Date.now()
+      });
+    }
+  }, [isAuthenticated, isPlaying, currentTrack, volumeLevel, deviceId]);
+
+  // Listen for visibility changes and sync state
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // When tab becomes visible, broadcast current state
+        if (isAuthenticated) {
+          createSpotifyStateChangeEvent({
+            isPlaying,
+            currentTrack,
+            volume: volumeLevel,
+            deviceId,
+            timestamp: Date.now()
+          });
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, isPlaying, currentTrack, volumeLevel, deviceId]);
+
+  // Add separate visibility change handler to handle browser tab switching
+  useEffect(() => {
+    if (!isAuthenticated || !isPlayerReady) return;
+    
+    console.log('Setting up document visibility handler for tab switching');
+    
+    // Handle browser tab visibility changes
+    const handleVisibilityChange = () => {
+      // When the page becomes visible again after being hidden
+      if (document.visibilityState === 'visible') {
+        console.log('Document became visible again, checking playback state');
+        
+        // Check if music was playing before losing visibility
+        const wasPlaying = localStorage.getItem('spotify_is_playing') === 'true';
+        
+        if (wasPlaying && deviceId && spotifyClient.current) {
+          // Verify playback state with Spotify
+          spotifyClient.current.getPlaybackState()
+            .then(state => {
+              // Only attempt to restart if not already playing
+              if (!state?.is_playing) {
+                console.log('Playback stopped while tab was inactive, restarting...');
+                spotifyClient.current?.play(deviceId, {})
+                  .catch(err => console.debug('Auto-resume error (handled):', err));
+              }
+            })
+            .catch(() => {
+              // On error, just try to resume playback
+              if (deviceId && spotifyClient.current) {
+                console.log('Visibility change - attempting to restore playback');
+                spotifyClient.current.play(deviceId, {})
+                  .catch(err => console.debug('Visibility resume error (handled):', err));
+              }
+            });
+        }
+      } else if (document.visibilityState === 'hidden') {
+        // When tab is being hidden, store playback state
+        if (isPlaying) {
+          localStorage.setItem('spotify_is_playing', 'true');
+          localStorage.setItem('spotify_last_active', Date.now().toString());
+        } else {
+          localStorage.setItem('spotify_is_playing', 'false');
+        }
+      }
+    };
+    
+    // Add visibility change event listener
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, isPlayerReady, deviceId, isPlaying]);
+
   // Context value
   const contextValue = {
     isAuthenticated,
@@ -807,6 +1092,7 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
     isManualControl: getManualControlStatus(),
     resetManualControl,
     getManualControlStatus,
+    spotifyClient: spotifyClient.current,
   };
 
   return (
@@ -839,6 +1125,7 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isManualControl: getManualControlStatus(),
         resetManualControl,
         getManualControlStatus,
+        spotifyClient: spotifyClient.current,
       }}
     >
       {children}
@@ -846,4 +1133,4 @@ export const SpotifyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
-export const useSpotify = () => useContext(SpotifyContext); 
+export const useSpotify = () => useContext(SpotifyContext);

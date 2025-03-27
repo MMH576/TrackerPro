@@ -10,7 +10,7 @@ import { Toaster } from '@/components/ui/toaster'
 import { SupabaseProvider } from '@/lib/supabase-context'
 import { SpotifyProvider } from '@/hooks/use-spotify'
 import { PomodoroProvider } from '@/contexts/pomodoro-context'
-import { FloatingPlayerWrapper } from '@/components/spotify/FloatingPlayerWrapper'
+import FloatingPlayerWrapper from '@/components/spotify/FloatingPlayerWrapper'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -67,6 +67,12 @@ export default function RootLayout({
                         <div className="flex min-h-screen flex-col">
                           {children}
                         </div>
+                        {/* 
+                          FloatingPlayerWrapper rendered outside main content area
+                          to ensure it persists across all app navigation.
+                          This placement is intentional to maintain playback state
+                          when navigating between tabs. 
+                        */}
                         <FloatingPlayerWrapper />
                         <Toaster />
                       </NotificationProvider>

@@ -13,6 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import Cookies from 'js-cookie';
 import { formatTime } from '@/utils/format';
+import { usePathname } from 'next/navigation';
 
 export default function PlayerSpotify() {
   const {
@@ -158,6 +159,11 @@ export default function PlayerSpotify() {
       // Immediately update local state for UI responsiveness
       setLocalPlayingState(true);
       
+      // Make sure we have a valid deviceId
+      if (!deviceId) {
+        throw new Error('No active playback device found');
+      }
+      
       // Then immediately play the playlist instead of toggling
       await playPlaylist(playlist);
     } catch (error: any) {
@@ -165,6 +171,30 @@ export default function PlayerSpotify() {
       setErrorMessage(`Failed to play playlist: ${error.message}`);
       // Reset local playing state on error
       setLocalPlayingState(isPlaying);
+      
+      // Retry after a delay if it's a common error type
+      if (error.message && (
+        error.message.includes('404') ||
+        error.message.includes('device') ||
+        error.message.includes('Cannot read properties of null') ||
+        error.message.includes('Player command failed')
+      )) {
+        if (retryCount < 2) {
+          console.log(`Attempting to recover (retry ${retryCount + 1})...`);
+          setRetryCount(prev => prev + 1);
+          
+          // Add a delay before retry
+          setTimeout(() => {
+            // Use the playlistId for retry rather than playlist object
+            if (deviceId) {
+              console.log('Retrying playlist selection after error');
+              handlePlaylistSelect(playlistId);
+            }
+          }, 2000);
+        } else {
+          setErrorMessage('Multiple errors occurred. Please try reconnecting to Spotify.');
+        }
+      }
     } finally {
       setIsLoadingPlaylist(false);
     }
@@ -543,6 +573,142 @@ export default function PlayerSpotify() {
     };
   }, []);
 
+  // Add route navigation awareness to preserve playback state
+  useEffect(() => {
+    if (!isAuthenticated || !deviceId) return;
+    
+    console.log('Setting up route change detection for PlayerSpotify');
+    
+    // Detect route changes inside the app
+    let previousUrl = window.location.href;
+    
+    const checkForRouteChange = () => {
+      if (previousUrl !== window.location.href) {
+        const oldUrl = previousUrl;
+        previousUrl = window.location.href;
+        
+        console.log(`Route change detected: ${oldUrl} -> ${previousUrl}`);
+        
+        // If music was playing, ensure it continues after navigation
+        if (isPlaying) {
+          console.log('Music was playing during navigation, ensuring it continues');
+          
+          // Add a small delay to allow for component remounting
+          setTimeout(() => {
+            // Verify if music is still playing after navigation
+            if (spotifyClient.current && deviceId && isPlaying && !isLoading) {
+              spotifyClient.current.getPlaybackState()
+                .then(state => {
+                  if (state && !state.is_playing) {
+                    console.log('Playback stopped during navigation, resuming...');
+                    // Attempt to resume playback with the same conditions
+                    if (selectedPlaylist && currentTrack) {
+                      manualTogglePlayPause().catch(err => 
+                        console.debug('Resume error (handled):', err));
+                    }
+                  }
+                })
+                .catch(() => {
+                  // On error, just assume we need to resume
+                  if (currentTrack) {
+                    manualTogglePlayPause().catch(err => 
+                      console.debug('Resume error on route change (handled):', err));
+                  }
+                });
+            }
+          }, 800);
+        }
+      }
+    };
+    
+    // More frequent checks during active navigation
+    const routeObserver = setInterval(checkForRouteChange, 300);
+    
+    // Also listen for history changes
+    const handlePopState = () => {
+      console.log('History state changed, preserving music playback');
+      
+      // Flag that we're in a navigation event
+      localStorage.setItem('spotify_navigation_event', Date.now().toString());
+      
+      // If music is playing, mark it as such
+      if (isPlaying) {
+        localStorage.setItem('spotify_playing_during_navigation', 'true');
+      }
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    
+    // Cleanup
+    return () => {
+      clearInterval(routeObserver);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [isAuthenticated, deviceId, isPlaying, currentTrack, selectedPlaylist, isLoading, manualTogglePlayPause]);
+
+  // Add route change detection
+  const pathname = usePathname();
+  const previousPathRef = useRef<string | null>(null);
+
+  // Add effect to detect route changes and prevent interruption
+  useEffect(() => {
+    if (!currentTrack) return;
+    
+    if (!previousPathRef.current) {
+      previousPathRef.current = pathname;
+      return;
+    }
+    
+    // If pathname changed, we've navigated
+    if (previousPathRef.current !== pathname) {
+      console.log(`[PlayerSpotify] Route changed from ${previousPathRef.current} to ${pathname}`);
+      
+      // Store current playback state
+      if (isPlaying && currentTrack) {
+        console.log('[PlayerSpotify] Storing playback state for route change');
+        localStorage.setItem('spotify_playing_during_navigation', 'true');
+        localStorage.setItem('spotify_last_track_uri', currentTrack.uri);
+        localStorage.setItem('spotify_player_position', progressValue.toString());
+        localStorage.setItem('spotify_last_route_change', Date.now().toString());
+      }
+      
+      previousPathRef.current = pathname;
+      
+      // Check playback state after a delay to allow for component remounting
+      setTimeout(async () => {
+        if (!spotifyClient.current || !isPlaying) return;
+        
+        try {
+          const state = await spotifyClient.current.getPlaybackState();
+          
+          // If playback was interrupted, restore it
+          if (!state?.is_playing && localStorage.getItem('spotify_playing_during_navigation') === 'true') {
+            console.log('[PlayerSpotify] Playback interrupted by navigation, restoring...');
+            
+            if (deviceId) {
+              // Restore playback with position if available
+              const storedPosition = localStorage.getItem('spotify_player_position');
+              const position = storedPosition ? parseFloat(storedPosition) : 0;
+              
+              try {
+                await spotifyClient.current.play(deviceId, {
+                  uris: [currentTrack.uri],
+                  position_ms: position
+                }, true);
+                
+                console.log('[PlayerSpotify] Playback restored after navigation');
+              } catch (error) {
+                console.error('[PlayerSpotify] Failed to restore playback:', error);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[PlayerSpotify] Error checking playback after navigation:', error);
+        }
+      }, 1000);
+    }
+  }, [pathname, isPlaying, currentTrack, deviceId, progressValue, spotifyClient]);
+
   // Display authentication view
   if (!isAuthenticated) {
     return (
@@ -608,8 +774,8 @@ export default function PlayerSpotify() {
         <div className="flex items-center gap-3">
           {currentTrack?.album?.images?.[0]?.url && (
             <img 
-              src={currentTrack.album.images[0].url} 
-              alt={currentTrack.album.name}
+                  src={currentTrack.album.images[0].url}
+                  alt={currentTrack.album.name}
               className="w-12 h-12 rounded object-cover"
             />
           )}
@@ -620,26 +786,26 @@ export default function PlayerSpotify() {
             </p>
             <Progress value={progressValue} className="h-1 mt-1" />
           </div>
-        </div>
+          </div>
         <div className="flex justify-center gap-2 mt-1">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="sm"
             onClick={previousTrack}
             className="h-8 w-8 p-0 rounded-full"
           >
             <SkipBack className="h-4 w-4" />
           </Button>
-          <Button 
-            variant="default" 
+          <Button
+            variant="default"
             size="sm"
             onClick={handlePlayPauseToggle}
             className="h-8 w-8 p-0 rounded-full"
           >
             {localPlayingState ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5" />}
           </Button>
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="sm"
             onClick={nextTrack}
             className="h-8 w-8 p-0 rounded-full"
@@ -661,7 +827,7 @@ export default function PlayerSpotify() {
           <p className="text-sm text-muted-foreground text-center mb-6">
             Connect to Spotify to play your music while you work.
           </p>
-          <Button 
+          <Button
             onClick={handleConnect} 
             className="w-full flex items-center justify-center bg-[#1DB954] hover:bg-[#1ED760] text-white font-medium py-5"
             disabled={isConnecting}
@@ -855,11 +1021,11 @@ export default function PlayerSpotify() {
                           )}
                         </Button>
                         
-                        <Slider
-                          value={[volume]}
-                          min={0}
-                          max={100}
-                          step={1}
+          <Slider
+            value={[volume]}
+            min={0}
+            max={100}
+            step={1}
                           className={cn("w-24", isVolumeAdjusting && "opacity-100")}
                           onValueChange={(value) => {
                             // Set UI state for feedback
